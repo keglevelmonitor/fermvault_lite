@@ -1,15 +1,21 @@
 #!/bin/bash
 # setup.sh
-# Single-line installer wrapper for FermVault
+# Single-line installer wrapper for FermVault_lite
 
 # 1. Define the Install Directories
 INSTALL_DIR="$HOME/fermvault_lite"
-DATA_DIR="$HOME/fermvault_lite-data"
+
+# --- CRITICAL FIX: Export variables so install.sh can see them ---
+export DATA_DIR="$HOME/fermvault_lite-data"
+export DESKTOP_FILENAME="fermvault_lite.desktop"
+export APP_TITLE="FermVault Lite"
+# ---------------------------------------------------------------
+
 WHAT_TO_INSTALL="FermVault Lite Application and Data Directory"
 CLEANUP_MODE="NONE"
 
 echo "========================================"
-echo "   FermVault Auto-Installer"
+echo "    FermVault Auto-Installer (LITE)"
 echo "========================================"
 
 # 2. Logic to handle existing installs
@@ -46,15 +52,15 @@ echo "and will use about 20 MB of storage space on the Pi's SD card."
 echo ""
 echo "Basic installed file structure:"
 echo ""
-echo "  ~/fermvault/"
+echo "  $INSTALL_DIR/"
 echo "  ├── utility files..."
 echo "  ├── src/"
 echo "  │ ├── application files..."
 echo "  │ └── assets/"
-echo "  │   └── supporting files..."
+echo "  │    └── supporting files..."
 echo "  ├── venv/"
 echo "  │ └── dependencies..."
-echo "  ~/fermvault-data/"
+echo "  $DATA_DIR/"
 echo "  └── user data..."
 echo ""
 echo "------------------------------------------------------------"
@@ -99,4 +105,6 @@ fi
 # 7. Run the Main Installer
 echo "Launching main installer..."
 chmod +x install.sh
+
+# The exported variables (DATA_DIR, DESKTOP_FILENAME) will now be passed automatically
 ./install.sh

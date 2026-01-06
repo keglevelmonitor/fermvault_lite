@@ -1,24 +1,35 @@
 #!/bin/bash
 # install.sh
 # Installation script for FermVault application.
+# UPDATED: Now supports environment variables for "Lite" versions.
 
 # Stop on any error to prevent partial installs
 set -e
 
 echo "=========================================="
-echo "   FermVault Lite Installer"
+echo "    FermVault Installer"
 echo "=========================================="
 
 # --- 1. Define Variables ---
+# We use ${VAR:-DEFAULT} syntax. If the variable is already set (exported), 
+# use it; otherwise, use the default value.
+
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON_EXEC="python3"
 VENV_DIR="$PROJECT_DIR/venv"
 VENV_PYTHON_EXEC="$VENV_DIR/bin/python"
-DESKTOP_FILE_TEMPLATE="$PROJECT_DIR/fermvault_lite.desktop"
-INSTALL_LOCATION="$HOME/.local/share/applications/fermvault_lite.desktop"
-DATA_DIR="$HOME/fermvault_lite-data"
 
-echo "Project path: $PROJECT_DIR"
+# Dynamic Variables (Can be overridden by setup.sh)
+DATA_DIR="${DATA_DIR:-$HOME/fermvault-data}"
+DESKTOP_FILENAME="${DESKTOP_FILENAME:-fermvault.desktop}"
+APP_TITLE="${APP_TITLE:-Fermentation Vault}"
+
+DESKTOP_FILE_TEMPLATE="$PROJECT_DIR/fermvault.desktop"
+INSTALL_LOCATION="$HOME/.local/share/applications/$DESKTOP_FILENAME"
+
+echo "Project path:   $PROJECT_DIR"
+echo "Data directory: $DATA_DIR"
+echo "App Title:      $APP_TITLE"
 
 # --- 2. Install System Dependencies (Requires Sudo) ---
 echo ""
@@ -86,26 +97,32 @@ if [ -f "$DESKTOP_FILE_TEMPLATE" ]; then
     # 4a. Define paths
     # Note: We point to the MAIN.PY in src, but we use the VENV python to execute it.
     # This ensures the app always uses the isolated libraries.
-    EXEC_CMD="$VENV_PYTHON_EXEC $PROJECT_DIR/src/main_kivy.py"
+    EXEC_CMD="$VENV_PYTHON_EXEC $PROJECT_DIR/src/main.py"
     ICON_PATH="$PROJECT_DIR/src/assets/fermenter.png"
     
     # 1. Copy to temp
     cp "$DESKTOP_FILE_TEMPLATE" /tmp/fermvault_temp.desktop
     
     # 2. Update Exec path to use VENV python
-    sed -i "s|Exec=PLACEHOLDER_EXEC_PATH|Exec=$EXEC_CMD|g" /tmp/fermvault_lite_temp.desktop
+    sed -i "s|Exec=PLACEHOLDER_EXEC_PATH|Exec=$EXEC_CMD|g" /tmp/fermvault_temp.desktop
     
     # 3. Update Path (working directory)
-    sed -i "s|Path=PLACEHOLDER_PATH|Path=$PROJECT_DIR/src|g" /tmp/fermvault_lite_temp.desktop
+    sed -i "s|Path=PLACEHOLDER_PATH|Path=$PROJECT_DIR/src|g" /tmp/fermvault_temp.desktop
 
     # 4. Update Icon path
-    sed -i "s|Icon=PLACEHOLDER_ICON_PATH|Icon=$ICON_PATH|g" /tmp/fermvault_lite_temp.desktop
+    sed -i "s|Icon=PLACEHOLDER_ICON_PATH|Icon=$ICON_PATH|g" /tmp/fermvault_temp.desktop
+
+    # 5. NEW: Update the Name (so Lite and Standard look different in menu)
+    # This assumes your template has "Name=Fermentation Vault" or similar. 
+    # This appends/replaces purely based on the variable.
+    # We use a broad regex to catch the existing Name= line and replace it.
+    sed -i "s|^Name=.*|Name=$APP_TITLE|g" /tmp/fermvault_temp.desktop
     
-    # 5. Move to user applications folder
+    # 6. Move to user applications folder
     mkdir -p "$HOME/.local/share/applications"
     mv /tmp/fermvault_temp.desktop "$INSTALL_LOCATION"
     
-    # 6. Make executable
+    # 7. Make executable
     chmod +x "$INSTALL_LOCATION"
     
     echo "Shortcut installed to: $INSTALL_LOCATION"
@@ -115,10 +132,9 @@ fi
 
 echo ""
 echo "==========================================================================="
-echo "   Installation Complete!"
+echo "    Installation Complete!"
 echo ""
-echo "   At the Applications menu, select Other, Fermentation Vault to run the app."
+echo "    At the Applications menu, select Other, $APP_TITLE to run the app."
 echo ""
-echo "   You may need to reboot your RPi to refresh the menu."
+echo "    You may need to reboot your RPi to refresh the menu."
 echo "==========================================================================="
-
