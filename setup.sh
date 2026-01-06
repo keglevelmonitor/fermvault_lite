@@ -15,7 +15,7 @@ WHAT_TO_INSTALL="FermVault Lite Application and Data Directory"
 CLEANUP_MODE="NONE"
 
 echo "========================================"
-echo "    FermVault Auto-Installer (LITE)"
+echo "    FermVault Lite Auto-Installer (LITE)"
 echo "========================================"
 
 # 2. Logic to handle existing installs

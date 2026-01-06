@@ -1,13 +1,13 @@
 #!/bin/bash
 # install.sh
-# Installation script for FermVault application.
+# Installation script for FermVault Lite application.
 # UPDATED: Now supports environment variables for "Lite" versions.
 
 # Stop on any error to prevent partial installs
 set -e
 
 echo "=========================================="
-echo "    FermVault Installer"
+echo "    FermVault Lite Installer"
 echo "=========================================="
 
 # --- 1. Define Variables ---
@@ -20,11 +20,11 @@ VENV_DIR="$PROJECT_DIR/venv"
 VENV_PYTHON_EXEC="$VENV_DIR/bin/python"
 
 # Dynamic Variables (Can be overridden by setup.sh)
-DATA_DIR="${DATA_DIR:-$HOME/fermvault-data}"
-DESKTOP_FILENAME="${DESKTOP_FILENAME:-fermvault.desktop}"
-APP_TITLE="${APP_TITLE:-Fermentation Vault}"
+DATA_DIR="${DATA_DIR:-$HOME/fermvault_lite-data}"
+DESKTOP_FILENAME="${DESKTOP_FILENAME:-fermvault_lite.desktop}"
+APP_TITLE="${APP_TITLE:-Ferm Vault Lite}"
 
-DESKTOP_FILE_TEMPLATE="$PROJECT_DIR/fermvault.desktop"
+DESKTOP_FILE_TEMPLATE="$PROJECT_DIR/fermvault_lite.desktop"
 INSTALL_LOCATION="$HOME/.local/share/applications/$DESKTOP_FILENAME"
 
 echo "Project path:   $PROJECT_DIR"
