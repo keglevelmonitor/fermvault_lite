@@ -214,7 +214,7 @@ class SettingsManager:
     def __init__(self, settings_file_path=None):
         
         # --- MODIFICATION: Define the user data directory ---
-        self.data_dir = os.path.join(os.path.expanduser('~'), 'fermvault-data')
+        self.data_dir = os.path.join(os.path.expanduser('~'), 'fermvault_lite-data')
         
         # --- NEW PRINT FOR DEBUGGING ---
         print(f"[DEBUG] SettingsManager: Target data directory is {self.data_dir}")

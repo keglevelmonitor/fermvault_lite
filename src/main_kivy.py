@@ -234,6 +234,18 @@ class FermVaultApp(App):
 
         try:
             self.log_system_message("Initializing Backend...")
+            
+            # --- PATH CALCULATION (From KettleBrain) ---
+            # 1. src/main_kivy.py
+            src_dir = os.path.dirname(os.path.abspath(__file__))
+            # 2. fermvault_lite/
+            project_dir = os.path.dirname(src_dir)
+            # 3. /home/raspberrypi/
+            root_dir = os.path.dirname(project_dir)
+            
+            # Pass root_dir so SettingsManager creates 'fermvault_lite-data' there
+            self.settings_manager = SettingsManager(root_dir)
+        
             self.settings_manager = SettingsManager()
             self.relay_control = RelayControl(self.settings_manager, RELAY_PINS)
             self.api_manager = APIManager(self.settings_manager)
