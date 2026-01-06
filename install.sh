@@ -127,7 +127,7 @@ if [ -f "$DESKTOP_FILE_TEMPLATE" ]; then
     
     echo "Shortcut installed to: $INSTALL_LOCATION"
 else
-    echo "[WARNING] fermvault.desktop template not found. Skipping shortcut."
+    echo "[WARNING] fermvault_lite.desktop template not found. Skipping shortcut."
 fi
 
 echo ""

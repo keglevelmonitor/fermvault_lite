@@ -33,10 +33,10 @@ if [ -d "$INSTALL_DIR" ] || [ -d "$DATA_DIR" ]; then
     read -p "Enter selection: " choice
     
     if [ "$choice" == "APP" ]; then
-        WHAT_TO_INSTALL="FermVault Application"
+        WHAT_TO_INSTALL="FermVault LIte Application"
         CLEANUP_MODE="APP"
     elif [ "$choice" == "ALL" ]; then
-        WHAT_TO_INSTALL="FermVault Application and Data Directory"
+        WHAT_TO_INSTALL="FermVault Lite Application and Data Directory"
         CLEANUP_MODE="ALL"
     else
         echo "Cancelled."
@@ -98,7 +98,7 @@ if [ -d "$INSTALL_DIR" ]; then
     git pull
 else
     echo "Cloning repository to $INSTALL_DIR..."
-    git clone https://github.com/keglevelmonitor/fermvault.git "$INSTALL_DIR"
+    git clone https://github.com/keglevelmonitor/fermvault_lite.git "$INSTALL_DIR"
     cd "$INSTALL_DIR" || exit 1
 fi
 
