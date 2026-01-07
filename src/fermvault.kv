@@ -16,7 +16,7 @@
     color: 1, 1, 1, 1
 
 <HeroTargetLabel@Label>:
-    font_size: '27sp'
+    font_size: '14sp'   # CHANGED: Was 27sp, now matches standard text
     bold: True
     color: 0.7, 0.7, 0.7, 1
 
@@ -250,13 +250,14 @@
                             bold: True
                         
                         Spinner:
-                            text: "OFF"
-                            values: ["OFF", "BrewersFriend", "Grainfather"]
+                            text: app.current_api_service
+                            values: app.api_service_list
                             size_hint_x: 0.6
                             background_normal: ''
                             background_color: 0.3, 0.3, 0.3, 1
                             font_size: '14sp'
                             bold: True
+                            on_text: app.select_api_service(self.text)
 
                     # -- Brew Session --
                     ControlRow:
@@ -270,13 +271,14 @@
                             bold: True
                         
                         Spinner:
-                            text: "Select Recipe..."
-                            values: ["Recipe 1", "Recipe 2", "Recipe 3"]
+                            text: app.current_brew_session
+                            values: app.brew_session_list
                             size_hint_x: 0.6
                             background_normal: ''
                             background_color: 0.3, 0.3, 0.3, 1
                             font_size: '14sp'
                             bold: True
+                            on_text: app.select_brew_session(self.text)
 
                     # -- Control Mode --
                     ControlRow:
@@ -383,7 +385,7 @@
                     # --- HERO SECTION ---
                     GridLayout:
                         cols: 2
-                        size_hint_y: 0.75 
+                        size_hint_y: 0.60
                         spacing: 10
                         padding: [0, 0, 0, 10]
                         
@@ -401,18 +403,22 @@
                             HeroHeaderLabel:
                                 text: "BEER"
                             
-                            # Actual (Big, TOP) - DYNAMIC COLOR
+                            # Actual (Big, TOP)
                             HeroActualLabel:
                                 text: app.beer_actual
                                 color: app.beer_actual_color
 
-                            # Target (Small, BOTTOM)
+                            # Spacer
+                            Widget:
+                                size_hint_y: None
+                                height: 20
+
+                            # Target (14sp)
                             HeroTargetLabel:
                                 text: "Target: " + app.beer_target
 
-                            # --- DUMMY SPACER ---
-                            Label:
-                                text: ""
+                            # Bottom Spacer
+                            Widget:
                                 size_hint_y: None
                                 height: 20
 
@@ -430,20 +436,25 @@
                             HeroHeaderLabel:
                                 text: "AMBIENT"
 
-                            # Actual (Big, TOP) - DYNAMIC COLOR
+                            # Actual (Big, TOP)
                             HeroActualLabel:
                                 text: app.ambient_actual
                                 color: app.ambient_actual_color
 
-                            # Target (Small, BOTTOM)
+                            # Spacer
+                            Widget:
+                                size_hint_y: None
+                                height: 20
+
+                            # Target (14sp)
                             HeroTargetLabel:
                                 text: "Target: " + app.ambient_target
                                 color: 0.7, 0.7, 0.7, 1
                             
-                            # Range (Bottom, Tiny)
+                            # Range (Now 14sp to match Target)
                             Label:
                                 text: "Range: " + app.ambient_range
-                                font_size: '14sp'
+                                font_size: '14sp' # CHANGED: Was 12sp, now matches Target
                                 bold: True
                                 color: 0.6, 0.6, 0.6, 1
                                 size_hint_y: None
@@ -451,30 +462,29 @@
 
                     # --- GRAVITY / STATUS (Bottom Strip) ---
                     GridLayout:
-                        size_hint_y: 0.25
+                        size_hint_y: 0.40 # CHANGED: Increased from 0.25 (Buttons are taller now)
                         cols: 3
                         spacing: 5
                         padding: [0, 5, 0, 5]
                         
                         Button:
-                            text: "OG\n1.050"
+                            text: app.og_full_text
+                            on_press: app.refresh_api_data()  # <--- ADD THIS LINE
                             halign: 'center'
-                            background_normal: ''
-                            background_color: 0.2, 0.2, 0.2, 1
                             font_size: '14sp'
                             bold: True
+                        
                         Button:
-                            text: "SG\n1.020"
+                            text: app.sg_full_text
+                            on_press: app.refresh_api_data()  # <--- ADD THIS LINE
                             halign: 'center'
-                            background_normal: ''
-                            background_color: 0.2, 0.2, 0.2, 1
                             font_size: '14sp'
                             bold: True
+                        
                         Button:
-                            text: "FG\n--"
+                            text: app.fg_full_text
+                            on_press: app.run_fg_calculator()  # <--- ADD THIS LINE
                             halign: 'center'
-                            background_normal: ''
-                            background_color: 0.2, 0.2, 0.2, 1
                             font_size: '14sp'
                             bold: True
 
@@ -756,11 +766,77 @@
                 Label:
                     text: "Notification & Email Settings\n(Coming Soon)"
 
-            # --- TAB 4: API & FG (PLACEHOLDER) ---
+            # --- TAB 4: API & FG ---
             TabbedPanelItem:
                 text: 'API & FG'
-                Label:
-                    text: "API & Final Gravity Settings\n(Coming Soon)"
+                
+                GridLayout:
+                    cols: 1
+                    padding: 10
+                    spacing: 2
+                    size_hint_y: 1
+
+                    # API KEY INPUT
+                    SettingInputRow:
+                        label_text: "API Key"
+                        value_text: app.api_key
+                        key: "api_key"
+
+                    # API FREQUENCY SLIDER
+                    StepperRow:
+                        label_text: "API Call Freq (min)"
+                        key: "api_call_frequency_m"
+                        value_text: app.api_call_frequency_m
+                        min_val: 1.0
+                        max_val: 60.0
+                        step_val: 1.0
+
+                    # SEPARATOR
+                    Label:
+                        size_hint_y: None
+                        height: 10
+                        canvas:
+                            Color: 
+                                rgba: 0.3, 0.3, 0.3, 1
+                            Line: 
+                                points: [self.x+10, self.y+5, self.right-10, self.y+5]
+
+                    # FG SETTINGS
+                    StepperRow:
+                        label_text: "FG Check Freq (hrs)"
+                        key: "fg_check_frequency_h"
+                        value_text: app.fg_check_frequency_h
+                        min_val: 12.0
+                        max_val: 48.0
+                        step_val: 6.0
+
+                    StepperRow:
+                        label_text: "SG Range Tolerance"
+                        key: "tolerance"
+                        value_text: app.tolerance
+                        min_val: 0.0001
+                        max_val: 0.0500
+                        step_val: 0.0001
+
+                    StepperRow:
+                        label_text: "SG Records Window"
+                        key: "window_size"
+                        value_text: app.window_size
+                        min_val: 100.0
+                        max_val: 1000.0
+                        step_val: 25.0
+
+                    StepperRow:
+                        label_text: "Max SG Outliers"
+                        key: "max_outliers"
+                        value_text: app.max_outliers
+                        min_val: 0.0
+                        max_val: 20.0
+                        step_val: 1.0
+
+                    # Filler
+                    Label:
+                        size_hint_y: 1
 
             # --- TAB 5: PID & TUNING (Text Inputs) ---
             TabbedPanelItem:

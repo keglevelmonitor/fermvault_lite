@@ -617,17 +617,14 @@ class NotificationManager:
         """Action handler to run FG calculation and update UI status."""
         
         if self.settings_manager.get("active_api_service") == "OFF":
-            # --- MODIFICATION: Use new error message ---
             self.ui.log_system_message("FG calculation requires an active API service.")
             self.settings_manager.set("fg_status_var", "")
-            # --- END MODIFICATION ---
             self.settings_manager.set("fg_value_var", "-.---")
             self.ui.root.after(0, self.ui._update_data_display)
             return
             
         def fg_task():
             self.ui.log_system_message("Running Final Gravity stability analysis...")
-            # FGCalculator must be instantiated here or passed in __init__
             fg_calc = self.ui.fg_calculator_instance 
             if not fg_calc: 
                  self.ui.log_system_message("FG Calculator not initialized.")
@@ -635,48 +632,66 @@ class NotificationManager:
 
             results = fg_calc.calculate_fg()
             
-            # --- MODIFICATION: Simplified Logic for FG Vars and Logging ---
             params = results.get('settings', {})
             tol = params.get('tolerance', 'N/A')
             win = params.get('window_size', 'N/A')
             out = params.get('max_outliers', 'N/A')
             
             value_msg = "-.---"
-            status_msg = "" # --- FIX: Default to blank
+            raw_status = ""    # The full message for the logs
+            button_status = "" # The short message for the UI
             log_msg = ""
-            has_error = False
-
+            
+            # --- 1. DETERMINE RAW STATUS ---
             if results.get("stable"):
                 value_msg = f"{results['results']['average_sg']:.3f}"
-                status_msg = "Stable"
+                raw_status = "Stable"
                 
-                # --- MODIFICATION: Use parser for timestamps ---
+                # Timestamp parsing for log
                 first_ts = self._parse_api_timestamp(results['results']['first_timestamp'], is_scheduled=True)
                 last_ts = self._parse_api_timestamp(results['results']['last_timestamp'], is_scheduled=True)
-                log_msg = f"FG Calculation: Stable: {value_msg}. Range: {first_ts} to {last_ts}. (Range Tolerance: {tol}, Records Window: {win}, Max Outliers: {out})"
-                # --- END MODIFICATION ---
+                log_msg = f"FG Calculation: Stable: {value_msg}. Range: {first_ts} to {last_ts}."
+                
             else:
                 value_msg = "-.---"
-                status_msg = "" # --- FIX: Set to blank on error/pending
+                # Check top-level error
+                if results.get("error"):
+                    raw_status = results['error']
+                # Check inner results error
+                elif results.get('results') and results['results'].get("error"):
+                    raw_status = results['results']['error']
+                else:
+                    raw_status = "Pending"
                 
-                # Check for errors to log them
-                if results.get("error"): 
-                    log_msg = f"FG Calculation: Pending ({results['error']})"
-                    has_error = True
-                elif results.get('results') and results['results'].get("error"): 
-                    log_msg = f"FG Calculation: Pending ({results['results']['error']})"
-                    has_error = True
-                
-                if not has_error:
-                    # No error, just pending: Log with params
-                    log_msg = f"FG Calculation: Pending. Params: (Tol: {tol}, Win: {win}, Out: {out})"
-            # --- END MODIFICATION ---
+                log_msg = f"FG Calculation: {raw_status}"
+
+            # --- 2. MAP TO SHORT BUTTON TEXT ---
+            # This dictionary maps the long/raw messages to your UI-friendly versions
+            SHORT_TEXT_MAP = {
+                "Not enough data": "Low Data",
+                "No data found": "No Data",
+                "Too many outliers": "Noisy",
+                "Unstable": "Unstable",
+                "Stable": "Stable",
+                "Pending": "Pending"
+            }
             
-            self.settings_manager.set("fg_status_var", status_msg)
+            # Default to the raw status if no match found
+            button_status = SHORT_TEXT_MAP.get(raw_status, raw_status)
+            
+            # Special Case: Catch "API Error" which might have dynamic text after it
+            if "API Error" in raw_status:
+                button_status = "API Error"
+
+            # --- 3. SAVE & LOG ---
+            self.settings_manager.set("fg_status_var", button_status)
             self.settings_manager.set("fg_value_var", value_msg)
             
-            self.ui.log_system_message(log_msg) # Log the detailed message
-            
+            # Add params to log if it's not a hard error
+            if "Error" not in raw_status and "No data" not in raw_status:
+                 log_msg += f" (Tol: {tol}, Win: {win}, Out: {out})"
+
+            self.ui.log_system_message(log_msg)
             self.ui.root.after(0, self.ui._update_data_display)
 
         threading.Thread(target=fg_task, daemon=True).start()
