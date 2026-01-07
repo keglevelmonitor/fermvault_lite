@@ -646,21 +646,20 @@ class FermVaultApp(App):
                     else:
                         self.update_log_text += f"\n[STATUS UNKNOWN]\nGit status returned:\n{status}"
 
-                # Schedule the UI update
                 Clock.schedule_once(update_ui, 0)
                     
             except Exception as e:
-                # Schedule error reporting on main thread
+                # FIX: Convert exception to string IMMEDIATELY
+                err_msg = str(e)
                 def report_error(dt):
-                    self.update_log_text += f"\n[ERROR] Check failed:\n{e}"
+                    self.update_log_text += f"\n[ERROR] Check failed:\n{err_msg}"
                 Clock.schedule_once(report_error, 0)
         
-        # Start the background thread
         threading.Thread(target=_check, daemon=True).start()
 
     def run_update_script(self):
         self.update_log_text += "\n\n[STARTING INSTALLATION]...\n"
-        self.is_update_available = False # Disable button to prevent double-click
+        self.is_update_available = False 
         
         def _install():
             script_url = "https://github.com/keglevelmonitor/fermvault_lite/raw/main/update.sh"
@@ -668,15 +667,15 @@ class FermVaultApp(App):
             
             try:
                 # 1. Download the script
-                self.update_log_text += f"Downloading update script from {script_url}...\n"
-                # Using curl for reliability on Pi
+                msg_dl = f"Downloading update script from {script_url}...\n"
+                Clock.schedule_once(lambda dt: self._append_update_log(msg_dl), 0)
+                
                 subprocess.run(["curl", "-L", "-o", local_script, script_url], check=True)
                 subprocess.run(["chmod", "+x", local_script], check=True)
                 
                 # 2. Run the script
-                self.update_log_text += "Executing update.sh...\n"
+                Clock.schedule_once(lambda dt: self._append_update_log("Executing update.sh...\n"), 0)
                 
-                # Use Popen to stream output line by line
                 process = subprocess.Popen(
                     ["./" + local_script],
                     stdout=subprocess.PIPE,
@@ -684,9 +683,9 @@ class FermVaultApp(App):
                     text=True
                 )
                 
-                # Read output
+                # Read output line by line
                 for line in process.stdout:
-                    # Schedule UI update on main thread
+                    # Capture line variable for the closure
                     Clock.schedule_once(lambda dt, l=line: self._append_update_log(l), 0)
                 
                 process.wait()
@@ -695,10 +694,13 @@ class FermVaultApp(App):
                     Clock.schedule_once(lambda dt: self._append_update_log("\n[SUCCESS] Update finished successfully.\nClick RESTART APP to apply changes."), 0)
                     self.is_install_successful = True
                 else:
-                    Clock.schedule_once(lambda dt: self._append_update_log(f"\n[FAILURE] Script exited with code {process.returncode}"), 0)
+                    code = process.returncode
+                    Clock.schedule_once(lambda dt: self._append_update_log(f"\n[FAILURE] Script exited with code {code}"), 0)
 
             except Exception as e:
-                Clock.schedule_once(lambda dt: self._append_update_log(f"\n[CRITICAL ERROR] {e}"), 0)
+                # FIX: Convert exception to string IMMEDIATELY
+                err_msg = str(e)
+                Clock.schedule_once(lambda dt: self._append_update_log(f"\n[CRITICAL ERROR] {err_msg}"), 0)
 
         threading.Thread(target=_install, daemon=True).start()
 
