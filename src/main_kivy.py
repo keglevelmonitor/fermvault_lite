@@ -668,7 +668,7 @@ class FermVaultApp(App):
             script_url = "https://github.com/keglevelmonitor/fermvault_lite/raw/main/update.sh"
             
             try:
-                # 1. Determine Project Root (One level up from 'src')
+                # 1. Determine Project Root (One level up from 'src') 
                 # current file is in .../fermvault_lite/src
                 src_dir = os.path.dirname(os.path.abspath(__file__))
                 project_root = os.path.dirname(src_dir)
