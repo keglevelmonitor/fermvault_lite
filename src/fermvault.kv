@@ -857,13 +857,120 @@
 <InfoScreen>:
     BoxLayout:
         orientation: 'vertical'
-        padding: 10
-        Label: 
-            text: "App Info Screen"
-        Button:
-            text: "BACK"
-            size_hint_y: None
-            height: 45
-            font_size: '14sp'
+        padding: 5
+        spacing: 5
+        canvas.before:
+            Color:
+                rgba: 0.1, 0.1, 0.1, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+        
+        # TITLE
+        Label:
+            text: "Application Info & Maintenance"
+            size_hint_y: 0.10
+            font_size: '18sp'
             bold: True
-            on_release: app.go_to_screen('dashboard', 'right')
+            color: app.col_theme_blue
+            canvas.before:
+                Color:
+                    rgba: 0.05, 0.05, 0.05, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+        # TABS
+        TabbedPanel:
+            do_default_tab: False
+            tab_width: 150
+            size_hint_y: 0.78 # Remaining space minus title/footer
+            
+            # --- TAB 1: UPDATES ---
+            TabbedPanelItem:
+                text: 'UPDATES'
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: 10
+                    spacing: 10
+                    
+                    Label:
+                        text: "Software Update Log"
+                        size_hint_y: None
+                        height: 30
+                        halign: 'left'
+                        text_size: self.size
+                        bold: True
+                        color: 0.7, 0.7, 0.7, 1
+
+                    TextInput:
+                        text: app.update_log_text
+                        readonly: True
+                        font_size: '13sp'
+                        font_name: 'RobotoMono-Regular' if 'RobotoMono-Regular' in getattr(app, 'fonts', []) else 'Roboto' 
+                        background_color: 0.15, 0.15, 0.15, 1
+                        foreground_color: 0.9, 0.9, 0.9, 1
+
+            # --- TAB 2: RESET/UNINSTALL (Placeholder) ---
+            TabbedPanelItem:
+                text: 'RESET/UNINSTALL'
+                Label:
+                    text: "Factory Reset & Uninstall Options\n(Coming Soon)"
+                    halign: 'center'
+
+            # --- TAB 3: ABOUT (Placeholder) ---
+            TabbedPanelItem:
+                text: 'ABOUT'
+                Label:
+                    text: "FermVault Lite v1.0\nCreated by Keg Level Monitor\n(Coming Soon)"
+                    halign: 'center'
+
+        # FOOTER: 5 COLUMNS
+        GridLayout:
+            cols: 5
+            size_hint_y: 0.12
+            spacing: 5
+            
+            Button:
+                text: "CANCEL/EXIT"
+                font_size: '14sp'
+                bold: True
+                on_release: app.go_to_screen('dashboard', 'right')
+                
+            Button:
+                text: "HELP"
+                font_size: '14sp'
+                bold: True
+            
+            # ACTION 1: CHECK
+            Button:
+                text: "CHECK"
+                font_size: '14sp'
+                bold: True
+                background_color: 0.2, 0.6, 0.8, 1 # Blueish
+                on_release: app.check_for_updates()
+            
+            # ACTION 2: INSTALL (Disabled until update found)
+            Button:
+                text: "INSTALL"
+                font_size: '14sp'
+                bold: True
+                disabled: not app.is_update_available
+                # Gray if disabled, Green if enabled
+                background_disabled_normal: ''
+                background_disabled_down: ''
+                background_color: (0.2, 0.8, 0.2, 1) if app.is_update_available else (0.3, 0.3, 0.3, 1)
+                on_release: app.run_update_script()
+
+            # ACTION 3: RESTART (Disabled until success)
+            Button:
+                text: "RESTART APP"
+                font_size: '14sp'
+                bold: True
+                disabled: not app.is_install_successful
+                # Gray if disabled, Amber if enabled
+                background_disabled_normal: ''
+                background_disabled_down: ''
+                background_color: (1, 0.6, 0, 1) if app.is_install_successful else (0.3, 0.3, 0.3, 1)
+                on_release: app.restart_application()

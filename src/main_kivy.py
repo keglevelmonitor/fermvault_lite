@@ -8,6 +8,8 @@ import signal
 import atexit
 import time
 from datetime import datetime
+import subprocess
+import shutil
 
 # --- 0. OS ENVIRONMENT SETUP ---
 os.environ['SDL_VIDEO_X11_WMCLASS'] = "Fermentation Vault"
@@ -160,6 +162,11 @@ class FermVaultApp(App):
     
     # --- Settings Properties (SOURCE OF TRUTH NAMES) ---
     available_sensors = ListProperty(["unassigned"])
+    
+    # --- UPDATE & MAINTENANCE PROPERTIES ---
+    update_log_text = StringProperty("Click CHECK to check for app updates.\n")
+    is_update_available = BooleanProperty(False)
+    is_install_successful = BooleanProperty(False)
     
     # SOURCE OF TRUTH: settings_manager.py -> system_settings
     ds18b20_beer_sensor = StringProperty("unassigned")
@@ -615,6 +622,95 @@ class FermVaultApp(App):
         print("[App] on_stop called. FORCING EXIT.")
         failsafe_cleanup()
         os._exit(0)
+        
+    def check_for_updates(self):
+        self.update_log_text = "Checking for updates...\n"
+        self.is_update_available = False
+        self.is_install_successful = False
+        
+        def _check():
+            try:
+                # Fetch latest data from origin (Blocking I/O)
+                subprocess.check_output(["git", "fetch"], stderr=subprocess.STDOUT)
+                
+                # Check status (Blocking I/O)
+                status = subprocess.check_output(["git", "status", "-uno"], text=True)
+                
+                # Define the UI update logic to run back on the main thread
+                def update_ui(dt):
+                    if "behind" in status:
+                        self.update_log_text += "\n[UPDATE AVAILABLE]\nA new version is available on GitHub.\nClick INSTALL to proceed."
+                        self.is_update_available = True
+                    elif "up to date" in status:
+                        self.update_log_text += "\n[SYSTEM IS CURRENT]\nYou are running the latest version."
+                    else:
+                        self.update_log_text += f"\n[STATUS UNKNOWN]\nGit status returned:\n{status}"
+
+                # Schedule the UI update
+                Clock.schedule_once(update_ui, 0)
+                    
+            except Exception as e:
+                # Schedule error reporting on main thread
+                def report_error(dt):
+                    self.update_log_text += f"\n[ERROR] Check failed:\n{e}"
+                Clock.schedule_once(report_error, 0)
+        
+        # Start the background thread
+        threading.Thread(target=_check, daemon=True).start()
+
+    def run_update_script(self):
+        self.update_log_text += "\n\n[STARTING INSTALLATION]...\n"
+        self.is_update_available = False # Disable button to prevent double-click
+        
+        def _install():
+            script_url = "https://github.com/keglevelmonitor/fermvault_lite/raw/main/update.sh"
+            local_script = "update.sh"
+            
+            try:
+                # 1. Download the script
+                self.update_log_text += f"Downloading update script from {script_url}...\n"
+                # Using curl for reliability on Pi
+                subprocess.run(["curl", "-L", "-o", local_script, script_url], check=True)
+                subprocess.run(["chmod", "+x", local_script], check=True)
+                
+                # 2. Run the script
+                self.update_log_text += "Executing update.sh...\n"
+                
+                # Use Popen to stream output line by line
+                process = subprocess.Popen(
+                    ["./" + local_script],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True
+                )
+                
+                # Read output
+                for line in process.stdout:
+                    # Schedule UI update on main thread
+                    Clock.schedule_once(lambda dt, l=line: self._append_update_log(l), 0)
+                
+                process.wait()
+                
+                if process.returncode == 0:
+                    Clock.schedule_once(lambda dt: self._append_update_log("\n[SUCCESS] Update finished successfully.\nClick RESTART APP to apply changes."), 0)
+                    self.is_install_successful = True
+                else:
+                    Clock.schedule_once(lambda dt: self._append_update_log(f"\n[FAILURE] Script exited with code {process.returncode}"), 0)
+
+            except Exception as e:
+                Clock.schedule_once(lambda dt: self._append_update_log(f"\n[CRITICAL ERROR] {e}"), 0)
+
+        threading.Thread(target=_install, daemon=True).start()
+
+    def _append_update_log(self, text):
+        self.update_log_text += text
+
+    def restart_application(self):
+        self.log_system_message("RESTARTING APPLICATION...")
+        self.stop() # Triggers on_stop failsafe
+        # Wait briefly for cleanup then restart
+        time.sleep(1)
+        os.execl(sys.executable, sys.executable, *sys.argv)
 
 if __name__ == '__main__':
     FermVaultApp().run()
