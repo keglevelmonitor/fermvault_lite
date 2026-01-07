@@ -1,5 +1,6 @@
-# fermvault app
-# main_kivy.py
+#
+# FULL FILE CONTENT: main_kivy.py
+# ---------------------------------------------------------
 import os
 import sys
 import threading
@@ -38,7 +39,12 @@ except ImportError as e:
     RelayControl = None
 
 # --- HARDWARE CONFIGURATION ---
-RELAY_PINS = {'Heat': 17, 'Cool': 22, 'Fan': 27}
+# MATCHES TKINTER CONFIGURATION EXACTLY (Source of Truth)
+RELAY_PINS = {
+    'Heat': 26, # Board Pin 37
+    'Cool': 20, # Board Pin 38
+    'Fan': 21   # Board Pin 40
+}
 
 # --- 3. ROBUST SHUTDOWN LOGIC ---
 def failsafe_cleanup():
@@ -58,6 +64,7 @@ def failsafe_cleanup():
         if RelayControl and SettingsManager:
             print("[System] Attempting fallback cleanup with fresh instance...")
             sm = SettingsManager() 
+            # Force 'Configured' to skip wizard during cleanup
             sm.set("relay_logic_configured", True) 
             rc = RelayControl(sm, RELAY_PINS)
             rc.cleanup_gpio()
@@ -124,8 +131,18 @@ class DirtyPopup(Popup): pass
 
 # --- 6. MAIN APP CLASS ---
 class FermVaultApp(App):
-    # UI Properties
+    # --- UI Properties ---
     beer_actual = StringProperty("--.-")
+    
+    # --- DYNAMIC COLOR PROPERTIES ---
+    # Default to White [1, 1, 1, 1]
+    beer_actual_color = ListProperty([1, 1, 1, 1])
+    ambient_actual_color = ListProperty([1, 1, 1, 1])
+    
+    # --- NEW SINGLE SOURCE OF TRUTH FOR BLUE ---
+    # This replaces the hardcoded numbers [0.2, 0.8, 1, 1] used in the Header
+    col_theme_blue = ListProperty([0.2, 0.8, 1, 1])
+    
     beer_target = StringProperty("--.-")
     ambient_actual = StringProperty("--.-")
     ambient_target = StringProperty("--.-")
@@ -137,73 +154,57 @@ class FermVaultApp(App):
     log_text = StringProperty("[System] UI Initialized.\n")
     warning_message = StringProperty("")
     
-    # Settings Properties
+    # --- Status Bar Properties ---
+    warning_bg_color = ListProperty([0.2, 0.8, 0.2, 1]) 
+    current_sensor_error = StringProperty("")
+    
+    # --- Settings Properties (SOURCE OF TRUTH NAMES) ---
     available_sensors = ListProperty(["unassigned"])
-    beer_sensor_setting = StringProperty("unassigned")
-    ambient_sensor_setting = StringProperty("unassigned")
+    
+    # SOURCE OF TRUTH: settings_manager.py -> system_settings
+    ds18b20_beer_sensor = StringProperty("unassigned")
+    ds18b20_ambient_sensor = StringProperty("unassigned")
     relay_active_high = BooleanProperty(False)
-    log_csv_enabled = BooleanProperty(False)
+    pid_logging_enabled = BooleanProperty(False) # Renamed from log_csv_enabled
     
-    # Target Properties
-    setting_ambient_hold = StringProperty("0.0")
-    setting_beer_hold = StringProperty("0.0")
-    setting_ramp_hold = StringProperty("0.0")
-    setting_crash_hold = StringProperty("0.0")
-    setting_ramp_hours = StringProperty("0.0")
+    # SOURCE OF TRUTH: settings_manager.py -> control_settings
+    ambient_hold_f = StringProperty("0.0")
+    beer_hold_f = StringProperty("0.0")
+    ramp_up_hold_f = StringProperty("0.0")
+    fast_crash_hold_f = StringProperty("0.0")
+    ramp_up_duration_hours = StringProperty("0.0")
     
-    # SYSTEM: Cooling Operations (Minutes)
-    setting_cool_dwell = StringProperty("0.0")
-    setting_cool_max_run = StringProperty("0.0")
-    setting_cool_failsafe = StringProperty("0.0")
+    # SOURCE OF TRUTH: settings_manager.py -> compressor_protection_settings
+    cooling_dwell_time_s = StringProperty("0.0")
+    max_cool_runtime_s = StringProperty("0.0")
+    fail_safe_shutdown_time_s = StringProperty("0.0")
 
-    # PID & TUNING Properties
-    setting_pid_kp = StringProperty("0.0")
-    setting_pid_ki = StringProperty("0.0")
-    setting_pid_kd = StringProperty("0.0")
-    setting_amb_deadband = StringProperty("0.0")
-    setting_pid_envelope = StringProperty("0.0")
-    setting_crash_envelope = StringProperty("0.0")
-    setting_ramp_tol = StringProperty("0.0")
-    setting_ramp_deadband = StringProperty("0.0")
-    setting_ramp_landing = StringProperty("0.0")
+    # SOURCE OF TRUTH: settings_manager.py -> system_settings (PID)
+    pid_kp = StringProperty("0.0")
+    pid_ki = StringProperty("0.0")
+    pid_kd = StringProperty("0.0")
+    ambient_mode_deadband_f = StringProperty("0.0")
+    pid_envelope_f = StringProperty("0.0")
+    crash_mode_envelope_f = StringProperty("0.0")
+    ramp_pre_ramp_tolerance_f = StringProperty("0.0")
+    ramp_thermostatic_deadband_f = StringProperty("0.0")
+    ramp_pid_landing_zone_f = StringProperty("0.0")
     
-    # Dirty Tracking & Staging
+    # --- Dirty Tracking ---
     is_settings_dirty = BooleanProperty(False)
     staged_changes = {} 
     
-    # Key Mapping: Settings Key -> UI Property Name
-    property_map = {
-        # Targets
-        "ambient_hold_f": "setting_ambient_hold",
-        "beer_hold_f": "setting_beer_hold",
-        "ramp_up_hold_f": "setting_ramp_hold",
-        "fast_crash_hold_f": "setting_crash_hold",
-        "ramp_up_duration_hours": "setting_ramp_hours",
-        
-        # System
-        "ds18b20_beer_sensor": "beer_sensor_setting",
-        "ds18b20_ambient_sensor": "ambient_sensor_setting",
-        "relay_active_high": "relay_active_high",
-        "pid_logging_enabled": "log_csv_enabled",
-        
-        # Cooling (Seconds in Backend -> Minutes in UI)
-        "cooling_dwell_time_s": "setting_cool_dwell",
-        "cooling_max_run_time_s": "setting_cool_max_run",
-        "min_off_time_s": "setting_cool_failsafe",
-        
-        # PID & Tuning
-        "pid_kp": "setting_pid_kp",
-        "pid_ki": "setting_pid_ki",
-        "pid_kd": "setting_pid_kd",
-        "ambient_mode_deadband_f": "setting_amb_deadband",
-        "pid_envelope_f": "setting_pid_envelope",
-        "crash_mode_envelope_f": "setting_crash_envelope",
-        "ramp_pre_ramp_tolerance_f": "setting_ramp_tol",
-        "ramp_thermostatic_deadband_f": "setting_ramp_deadband",
-        "ramp_pid_landing_zone_f": "setting_ramp_landing"
-    }
+    # NO PROPERTY MAP - KEYS ARE DIRECT
+    
+    # --- Backend References ---
+    notification_manager = None
+    temp_controller = None
+    relay_control = None
+    
+    # --- THREADING CONTROL ---
+    _standby_running = False
+    _standby_thread = None
 
-    # --- LOGGING METHOD (Moved to top to prevent AttributeErrors) ---
     @mainthread
     def log_system_message(self, message):
         timestamp = datetime.now().strftime("[%H:%M:%S]")
@@ -235,25 +236,26 @@ class FermVaultApp(App):
         try:
             self.log_system_message("Initializing Backend...")
             
-            # --- PATH CALCULATION (From KettleBrain) ---
-            # 1. src/main_kivy.py
-            src_dir = os.path.dirname(os.path.abspath(__file__))
-            # 2. fermvault_lite/
-            project_dir = os.path.dirname(src_dir)
-            # 3. /home/raspberrypi/
-            root_dir = os.path.dirname(project_dir)
+            # 1. Initialize Settings
+            self.settings_manager = SettingsManager() 
             
-            # Pass root_dir so SettingsManager creates 'fermvault_lite-data' there
-            self.settings_manager = SettingsManager(root_dir)
-        
-            self.settings_manager = SettingsManager()
+            # --- CRITICAL FIX: Force Relay Hardware Configuration ---
+            if not self.settings_manager.get("relay_logic_configured"):
+                self.log_system_message("Setup: Auto-enabling Relay Hardware (Active Low).")
+                self.settings_manager.set("relay_logic_configured", True)
+                self.settings_manager.set("relay_active_high", False) 
+            # --------------------------------------------------------
+
+            # 2. Initialize Components
             self.relay_control = RelayControl(self.settings_manager, RELAY_PINS)
             self.api_manager = APIManager(self.settings_manager)
             self.temp_controller = TemperatureController(self.settings_manager, self.relay_control)
             
+            # 3. Variable Wrappers
             self.monitoring_var = KivyVarWrapper(lambda v: setattr(self, 'monitoring_state', v))
             self.control_mode_var = KivyVarWrapper(self._sync_control_mode_from_backend)
             
+            # Shims for UI Adapter compatibility
             self.fg_status_var = KivyVarWrapper(lambda v: None)
             self.fg_value_var = KivyVarWrapper(lambda v: None)
             self.og_display_var = KivyVarWrapper(lambda v: None)
@@ -264,242 +266,145 @@ class FermVaultApp(App):
             self.ui_adapter = KivyUIManagerAdapter(self)
             self.fg_calculator_instance = FGCalculator(self.settings_manager, self.api_manager)
             self.notification_manager = NotificationManager(self.settings_manager, self.ui_adapter)
+            
+            # 4. Wiring
             self.temp_controller.notification_manager = self.notification_manager
+            self.notification_manager.ui = self.ui_adapter
+            self.notification_manager.ui.app = self
+            self.relay_control.set_logger(self.log_system_message)
             
             self.notification_manager.start_scheduler()
             
-            # Load initial settings into UI properties
             self._refresh_all_settings_from_manager()
-            
             Clock.schedule_interval(self.tick, 1.0)
             
-            if self.settings_manager.get("monitoring_state") == "ON":
-                self.temp_controller.start_monitoring()
-                self.monitoring_state = "ON"
-            else:
-                self.log_system_message("Monitoring is OFF. Passive Mode Active.")
-                threading.Thread(target=self.temp_controller.update_control_logic_and_ui_data, daemon=True).start()
-            
             self.log_system_message("Backend initialized successfully.")
+            
+            # 5. STARTUP LOGIC: FORCE OFF (Safety Default)
+            self.settings_manager.set("monitoring_state", "OFF")
+            self.monitoring_state = "OFF"
+            
+            self.log_system_message("System Started. Monitoring is OFF (Safe Standby).")
+            self.start_standby_loop()
 
         except Exception as e:
             self.log_system_message(f"CRITICAL BACKEND ERROR: {e}")
             import traceback
             traceback.print_exc()
 
+    # --- SAFE STANDBY LOGIC (THREADED) ---
+    def start_standby_loop(self):
+        """Starts a background thread for safe monitoring to prevent UI blocking."""
+        if self._standby_running: 
+            return # Already running
+            
+        self._standby_running = True
+        self._standby_thread = threading.Thread(target=self._standby_worker, daemon=True)
+        self._standby_thread.start()
+        print("[App] Safe Standby Loop STARTED (Threaded).")
+
+    def stop_standby_loop(self):
+        """Stops the background thread."""
+        if self._standby_running:
+            self._standby_running = False
+            # Daemon thread will exit naturally
+            print("[App] Safe Standby Loop STOPPED.")
+
+    def _standby_worker(self):
+        """
+        Background worker that mimics the monitoring loop but forces relays OFF.
+        Runs in a separate thread to ensure blocking sensor reads don't freeze the UI.
+        """
+        while self._standby_running:
+            if self.temp_controller and self.relay_control:
+                try:
+                    # A. Safety Tick: Force logic to "OFF" state.
+                    self.relay_control.set_desired_states(False, False, "OFF")
+                    
+                    # B. UI Update: Read sensors (Blocking I/O) and push data.
+                    self.temp_controller.update_control_logic_and_ui_data()
+                except Exception as e:
+                    print(f"[Standby Thread Error] {e}")
+            
+            # Sleep to regulate loop speed (approx 1Hz)
+            time.sleep(1.0)
+
+    # --- MONITORING TOGGLES ---
+    def toggle_monitoring(self, new_state):
+        if not self.temp_controller: return
+
+        if new_state == "ON":
+            self.stop_standby_loop()
+            self.temp_controller.start_monitoring()
+            self.log_system_message("Monitoring STARTED (Active Control).")
+        else:
+            self.temp_controller.stop_monitoring()
+            self.start_standby_loop()
+            self.log_system_message("Monitoring STOPPED (Safe Standby).")
+
+    def toggle_monitoring_state(self, is_active):
+        state_str = "ON" if is_active else "OFF"
+        self.toggle_monitoring(state_str)
+
+    # --- SETTINGS REFRESH (Source of Truth) ---
     def _refresh_all_settings_from_manager(self):
         if not hasattr(self, 'settings_manager'): return
-        
         self.staged_changes.clear()
         
         def s(key, default, fmt=".1f"): return f"{float(self.settings_manager.get(key, default)):{fmt}}"
         
         # Targets
-        self.setting_ambient_hold = s("ambient_hold_f", 37.0)
-        self.setting_beer_hold = s("beer_hold_f", 55.0)
-        self.setting_ramp_hold = s("ramp_up_hold_f", 68.0)
-        self.setting_crash_hold = s("fast_crash_hold_f", 34.0)
-        self.setting_ramp_hours = s("ramp_up_duration_hours", 30.0)
+        self.ambient_hold_f = s("ambient_hold_f", 37.0)
+        self.beer_hold_f = s("beer_hold_f", 55.0)
+        self.ramp_up_hold_f = s("ramp_up_hold_f", 68.0)
+        self.fast_crash_hold_f = s("fast_crash_hold_f", 34.0)
+        self.ramp_up_duration_hours = s("ramp_up_duration_hours", 30.0)
         
         # System
-        self.beer_sensor_setting = self.settings_manager.get("ds18b20_beer_sensor", "unassigned")
-        self.ambient_sensor_setting = self.settings_manager.get("ds18b20_ambient_sensor", "unassigned")
+        self.ds18b20_beer_sensor = self.settings_manager.get("ds18b20_beer_sensor", "unassigned")
+        self.ds18b20_ambient_sensor = self.settings_manager.get("ds18b20_ambient_sensor", "unassigned")
         self.relay_active_high = self.settings_manager.get("relay_active_high", False)
-        self.log_csv_enabled = self.settings_manager.get("pid_logging_enabled", False)
+        self.pid_logging_enabled = self.settings_manager.get("pid_logging_enabled", False)
         
-        # Cooling (Convert Seconds -> Minutes)
-        comp_settings = self.settings_manager.get_all_compressor_protection_settings()
-        self.setting_cool_dwell = f"{comp_settings.get('cooling_dwell_time_s', 180) / 60.0:.1f}"
-        self.setting_cool_max_run = f"{comp_settings.get('cooling_max_run_time_s', 7200) / 60.0:.1f}"
-        self.setting_cool_failsafe = f"{comp_settings.get('min_off_time_s', 3600) / 60.0:.1f}"
+        # Compressor Protection (Source of Truth Keys)
+        comp = self.settings_manager.get_all_compressor_protection_settings()
+        # Convert Seconds (Backend) to Minutes (UI)
+        self.cooling_dwell_time_s = f"{comp.get('cooling_dwell_time_s', 180) / 60.0:.1f}"
+        self.max_cool_runtime_s = f"{comp.get('max_cool_runtime_s', 7200) / 60.0:.1f}"
+        self.fail_safe_shutdown_time_s = f"{comp.get('fail_safe_shutdown_time_s', 3600) / 60.0:.1f}"
 
         # PID & Tuning
-        self.setting_pid_kp = s("pid_kp", 2.0)
-        self.setting_pid_ki = s("pid_ki", 0.03, ".4f")
-        self.setting_pid_kd = s("pid_kd", 20.0)
-        self.setting_amb_deadband = s("ambient_mode_deadband_f", 1.0)
-        self.setting_pid_envelope = s("pid_envelope_f", 1.0)
-        self.setting_crash_envelope = s("crash_mode_envelope_f", 2.0)
-        self.setting_ramp_tol = s("ramp_pre_ramp_tolerance_f", 0.2)
-        self.setting_ramp_deadband = s("ramp_thermostatic_deadband_f", 0.1)
-        self.setting_ramp_landing = s("ramp_pid_landing_zone_f", 0.5)
+        self.pid_kp = s("pid_kp", 2.0)
+        self.pid_ki = s("pid_ki", 0.03, ".4f")
+        self.pid_kd = s("pid_kd", 20.0)
+        self.ambient_mode_deadband_f = s("ambient_mode_deadband_f", 1.0)
+        self.pid_envelope_f = s("pid_envelope_f", 1.0)
+        self.crash_mode_envelope_f = s("crash_mode_envelope_f", 2.0)
+        self.ramp_pre_ramp_tolerance_f = s("ramp_pre_ramp_tolerance_f", 0.2)
+        self.ramp_thermostatic_deadband_f = s("ramp_thermostatic_deadband_f", 0.1)
+        self.ramp_pid_landing_zone_f = s("ramp_pid_landing_zone_f", 0.5)
         
         self.is_settings_dirty = False
 
     def tick(self, dt):
-        if hasattr(self, 'temp_controller'):
-            if self.monitoring_state == "OFF":
-                threading.Thread(target=self.temp_controller.update_control_logic_and_ui_data, daemon=True).start()
-            self._update_warning_status()
+        self._update_warning_status()
 
     def _update_warning_status(self):
-        if not hasattr(self, 'relay_control'): return
-        now = time.time()
-        disabled_until = getattr(self.relay_control, 'cool_disabled_until', 0)
-        
-        if disabled_until > now:
-            remaining = int(disabled_until - now)
-            mins = remaining // 60
-            secs = remaining % 60
-            self.warning_message = f"Compressor Delay: {mins:02}:{secs:02} remaining"
-        else:
-            self.warning_message = ""
+        """Priority 1: Error, Priority 2: Delay, Priority 3: Healthy"""
+        if self.current_sensor_error:
+            self.warning_message = self.current_sensor_error
+            self.warning_bg_color = [0.9, 0, 0, 1] # Red
+            return
 
-    # --- SETTINGS LOGIC ---
-    def scan_sensors(self):
-        if not hasattr(self, 'temp_controller'): return
-        self._refresh_all_settings_from_manager()
-        self.log_system_message("Scanning for sensors...")
-        def _scan():
-            found = self.temp_controller.detect_ds18b20_sensors()
-            if "unassigned" not in found: found.insert(0, "unassigned")
-            Clock.schedule_once(lambda dt: setattr(self, 'available_sensors', found))
-        threading.Thread(target=_scan, daemon=True).start()
+        if hasattr(self, 'relay_control'):
+            restriction = self.settings_manager.get("cool_restriction_status", "")
+            if restriction:
+                self.warning_message = f"Protection: {restriction}"
+                self.warning_bg_color = [1, 0.6, 0, 1] # Orange
+                return
 
-    # --- STAGING LOGIC ---
-    def stage_setting_change(self, key, new_value):
-        self.staged_changes[key] = new_value
-        self.is_settings_dirty = True
-        
-        prop_name = self.property_map.get(key)
-        if prop_name:
-            # Update UI string immediately for feedback
-            if isinstance(new_value, (float, int)) and "setting_" in prop_name:
-                fmt = ".4f" if key == "pid_ki" else ".1f"
-                setattr(self, prop_name, f"{float(new_value):{fmt}}")
-            else:
-                setattr(self, prop_name, str(new_value))
-
-    def stage_text_input(self, key, text_value):
-        """Called by TextInputs. Converts string to float safely."""
-        try:
-            val = float(text_value)
-            self.stage_setting_change(key, val)
-        except ValueError:
-            # Ignore invalid typing (e.g. "2.") until it's valid
-            pass
-
-    # --- TARGET TAB (Slider Logic) ---
-    def adjust_target(self, key, delta):
-        try:
-            if key in self.staged_changes:
-                current = float(self.staged_changes[key])
-            else:
-                current = float(self.settings_manager.get(key, 0.0))
-            self.stage_setting_change(key, current + delta)
-        except Exception as e:
-            print(f"Error adjust: {e}")
-
-    def save_target_from_slider(self, key, value):
-        try:
-            new_val = float(value)
-            prop_name = self.property_map.get(key)
-            if prop_name:
-                current_ui = float(getattr(self, prop_name))
-                if abs(new_val - current_ui) > 0.01:
-                    self.stage_setting_change(key, new_val)
-        except: pass
-
-    # --- SYSTEM & OTHERS ---
-    def save_sensor_setting(self, sensor_type, value):
-        key = "ds18b20_beer_sensor" if sensor_type == "beer" else "ds18b20_ambient_sensor"
-        current_saved = self.settings_manager.get(key)
-        if value != current_saved or key in self.staged_changes:
-            self.stage_setting_change(key, value)
-
-    def set_relay_logic(self, active_high):
-        self.stage_setting_change("relay_active_high", active_high)
-
-    # --- GLOBAL ACTIONS ---
-    def check_unsaved_changes(self):
-        if self.is_settings_dirty:
-            DirtyPopup().open()
-        else:
-            self.go_to_screen('dashboard', 'right')
-
-    def discard_changes(self):
-        self._refresh_all_settings_from_manager()
-        self.go_to_screen('dashboard', 'right')
-
-    def save_and_exit(self):
-        if not hasattr(self, 'settings_manager'): return
-        self.log_system_message("Saving Settings...")
-        
-        # Separate Cooling keys for conversion
-        cooling_keys = ["cooling_dwell_time_s", "cooling_max_run_time_s", "min_off_time_s"]
-        cooling_update = {}
-        
-        for key, val in self.staged_changes.items():
-            if key in cooling_keys:
-                # Convert Minutes (UI) -> Seconds (Backend)
-                cooling_update[key] = float(val) * 60.0
-            else:
-                self.settings_manager.set(key, val)
-                
-        if cooling_update:
-            current = self.settings_manager.get_all_compressor_protection_settings()
-            current.update(cooling_update)
-            self.settings_manager.save_compressor_protection_settings(current)
-            
-        if hasattr(self, 'temp_controller') and hasattr(self.temp_controller, 'pid'):
-            # Update Live PID
-            self.temp_controller.pid.Kp = float(self.settings_manager.get("pid_kp", 2.0))
-            self.temp_controller.pid.Ki = float(self.settings_manager.get("pid_ki", 0.03))
-            self.temp_controller.pid.Kd = float(self.settings_manager.get("pid_kd", 20.0))
-
-        if "relay_active_high" in self.staged_changes:
-            self.settings_manager.set("relay_logic_configured", True)
-            self.relay_control.update_relay_logic()
-            
-        self.staged_changes.clear()
-        self.is_settings_dirty = False
-        threading.Thread(target=self.temp_controller.update_control_logic_and_ui_data, daemon=True).start()
-        self.go_to_screen('dashboard', 'right')
-
-    def reset_targets_to_defaults(self):
-        self.log_system_message("Resetting to Defaults (Unsaved).")
-        
-        # 1. Targets
-        defaults = {
-            "ambient_hold_f": 68.0, "beer_hold_f": 68.0,
-            "ramp_up_hold_f": 68.0, "ramp_up_duration_hours": 24.0,
-            "fast_crash_hold_f": 34.0,
-            # 2. Cooling (Minutes)
-            "cooling_dwell_time_s": 3.0,
-            "cooling_max_run_time_s": 120.0,
-            "min_off_time_s": 60.0,
-            # 3. PID & Tuning
-            "pid_kp": 2.0, "pid_ki": 0.03, "pid_kd": 20.0,
-            "ambient_mode_deadband_f": 1.0,
-            "pid_envelope_f": 1.0,
-            "crash_mode_envelope_f": 2.0,
-            "ramp_pre_ramp_tolerance_f": 0.2,
-            "ramp_thermostatic_deadband_f": 0.1,
-            "ramp_pid_landing_zone_f": 0.5
-        }
-        
-        for key, val in defaults.items():
-            self.stage_setting_change(key, val)
-
-    # --- NAVIGATION & CLEANUP ---
-    def set_control_mode(self, display_mode):
-        if not hasattr(self, 'settings_manager'): return
-        map_ui_to_internal = {
-            "Ambient": "Ambient Hold", "Beer": "Beer Hold",
-            "Ramp": "Ramp-Up", "Crash": "Fast Crash"
-        }
-        internal_mode = map_ui_to_internal.get(display_mode, "Ambient Hold")
-        self.settings_manager.set("control_mode", internal_mode)
-        if internal_mode != "Ramp-Up":
-            self.temp_controller.reset_ramp_state()
-        threading.Thread(target=self.temp_controller.update_control_logic_and_ui_data, daemon=True).start()
-
-    def toggle_monitoring(self, new_state):
-        if not hasattr(self, 'temp_controller'): return
-        if new_state == "ON":
-            self.temp_controller.start_monitoring()
-        else:
-            self.temp_controller.stop_monitoring()
+        self.warning_message = "System Healthy"
+        self.warning_bg_color = [0.2, 0.8, 0.2, 1] # Green
 
     @mainthread
     def push_data_update(self, **kwargs):
@@ -507,6 +412,7 @@ class FermVaultApp(App):
             try: return f"{float(val):.1f}"
             except (ValueError, TypeError): return "--.-"
 
+        # 1. Update Text Values
         self.beer_actual = fmt(kwargs.get('beer_temp'))
         self.beer_target = fmt(kwargs.get('beer_setpoint'))
         self.ambient_actual = fmt(kwargs.get('amb_temp'))
@@ -521,11 +427,176 @@ class FermVaultApp(App):
             
         h_state = str(kwargs.get('heat_state', 'OFF'))
         c_state = str(kwargs.get('cool_state', 'OFF'))
+        
+        # --- COLOR LOGIC UPDATE: Use self.col_theme_blue ---
         self.heater_color = [0.8, 0, 0, 1] if "HEATING" in h_state else [0.2, 0.2, 0.2, 1]
-        self.cooler_color = [0.2, 0.2, 0.8, 1] if "COOLING" in c_state else [0.2, 0.2, 0.2, 1]
+        self.cooler_color = self.col_theme_blue if "COOLING" in c_state else [0.2, 0.2, 0.2, 1]
 
         mode_internal = kwargs.get('current_mode', 'Ambient Hold')
         self._sync_control_mode_from_backend(mode_internal)
+        
+        self.current_sensor_error = kwargs.get('sensor_error_message', "")
+        self._update_warning_status()
+
+        # 2. Dynamic Hero Colors
+        COL_WHITE = [1, 1, 1, 1]
+        COL_LGRAY = [0.7, 0.7, 0.7, 1]
+        COL_GREEN = [0, 0.8, 0, 1]
+        COL_RED   = [0.8, 0, 0, 1]
+        # USE THE THEME BLUE HERE
+        COL_BLUE  = self.col_theme_blue
+
+        if self.monitoring_state == "OFF":
+            self.beer_actual_color = COL_WHITE
+            self.ambient_actual_color = COL_WHITE
+        else:
+            # Ambient Logic
+            try:
+                a_act = float(kwargs.get('amb_temp'))
+                a_max = float(amax) if amax is not None else 100.0
+                a_min = float(amin) if amin is not None else 0.0
+                
+                if a_act > a_max: self.ambient_actual_color = COL_RED
+                elif a_act < a_min: self.ambient_actual_color = COL_BLUE
+                else: self.ambient_actual_color = COL_GREEN
+            except (ValueError, TypeError):
+                self.ambient_actual_color = COL_WHITE
+
+            # Beer Logic
+            if "Ambient" in self.control_mode_display:
+                self.beer_actual_color = COL_LGRAY
+            else:
+                try:
+                    b_act = float(kwargs.get('beer_temp'))
+                    b_tgt = float(kwargs.get('beer_setpoint'))
+                    delta = b_act - b_tgt
+                    
+                    if delta >= 0.3: self.beer_actual_color = COL_RED
+                    elif delta <= -0.3: self.beer_actual_color = COL_BLUE
+                    else: self.beer_actual_color = COL_GREEN
+                except (ValueError, TypeError):
+                    self.beer_actual_color = COL_WHITE
+
+    # --- OTHER METHODS ---
+    def scan_sensors(self):
+        if not hasattr(self, 'temp_controller') or not self.temp_controller: return
+        self._refresh_all_settings_from_manager()
+        self.log_system_message("Scanning for sensors...")
+        def _scan():
+            found = self.temp_controller.detect_ds18b20_sensors()
+            if "unassigned" not in found: found.insert(0, "unassigned")
+            Clock.schedule_once(lambda dt: setattr(self, 'available_sensors', found))
+        threading.Thread(target=_scan, daemon=True).start()
+
+    def stage_setting_change(self, key, new_value):
+        # DIRECT KEY USAGE: The key IS the property name (except for formatting).
+        self.staged_changes[key] = new_value
+        self.is_settings_dirty = True
+        
+        # Update the UI property directly using the key
+        if hasattr(self, key):
+            # Special handling only for float formatting
+            if isinstance(new_value, (float, int)):
+                fmt = ".4f" if key == "pid_ki" else ".1f"
+                setattr(self, key, f"{float(new_value):{fmt}}")
+            else:
+                setattr(self, key, str(new_value))
+
+    def stage_text_input(self, key, text_value):
+        try:
+            val = float(text_value)
+            self.stage_setting_change(key, val)
+        except ValueError: pass
+
+    def adjust_target(self, key, delta):
+        try:
+            current = float(self.staged_changes.get(key, self.settings_manager.get(key, 0.0)))
+            self.stage_setting_change(key, current + delta)
+        except: pass
+
+    def save_target_from_slider(self, key, value):
+        try:
+            new_val = float(value)
+            if hasattr(self, key):
+                current_ui = float(getattr(self, key))
+                if abs(new_val - current_ui) > 0.01:
+                    self.stage_setting_change(key, new_val)
+        except: pass
+
+    def save_sensor_setting(self, sensor_type, value):
+        # Map simple type to TRUE Key
+        key = "ds18b20_beer_sensor" if sensor_type == "beer" else "ds18b20_ambient_sensor"
+        self.stage_setting_change(key, value)
+
+    def set_relay_logic(self, active_high):
+        self.stage_setting_change("relay_active_high", active_high)
+
+    def check_unsaved_changes(self):
+        if self.is_settings_dirty: DirtyPopup().open()
+        else: self.go_to_screen('dashboard', 'right')
+
+    def discard_changes(self):
+        self._refresh_all_settings_from_manager()
+        self.go_to_screen('dashboard', 'right')
+
+    def save_and_exit(self):
+        if not hasattr(self, 'settings_manager'): return
+        self.log_system_message("Saving Settings...")
+        
+        # Keys requiring Minute->Second conversion (Source of Truth)
+        cooling_keys = ["cooling_dwell_time_s", "max_cool_runtime_s", "fail_safe_shutdown_time_s"]
+        cooling_update = {}
+        
+        for key, val in self.staged_changes.items():
+            if key in cooling_keys:
+                cooling_update[key] = float(val) * 60.0
+            else:
+                self.settings_manager.set(key, val)
+                
+        if cooling_update:
+            current = self.settings_manager.get_all_compressor_protection_settings()
+            current.update(cooling_update)
+            self.settings_manager.save_compressor_protection_settings(current)
+            
+        if hasattr(self, 'temp_controller') and self.temp_controller and hasattr(self.temp_controller, 'pid'):
+            self.temp_controller.pid.Kp = float(self.settings_manager.get("pid_kp", 2.0))
+            self.temp_controller.pid.Ki = float(self.settings_manager.get("pid_ki", 0.03))
+            self.temp_controller.pid.Kd = float(self.settings_manager.get("pid_kd", 20.0))
+
+        if "relay_active_high" in self.staged_changes:
+            self.settings_manager.set("relay_logic_configured", True)
+            self.relay_control.update_relay_logic()
+            
+        self.staged_changes.clear()
+        self.is_settings_dirty = False
+        self.go_to_screen('dashboard', 'right')
+
+    def reset_targets_to_defaults(self):
+        defaults = {
+            "ambient_hold_f": 68.0, "beer_hold_f": 68.0, "ramp_up_hold_f": 68.0, 
+            "ramp_up_duration_hours": 24.0, "fast_crash_hold_f": 34.0,
+            
+            # TRUE COMPRESSOR KEYS
+            "cooling_dwell_time_s": 3.0,
+            "max_cool_runtime_s": 120.0,
+            "fail_safe_shutdown_time_s": 60.0,
+            
+            "pid_kp": 2.0, "pid_ki": 0.03, "pid_kd": 20.0,
+            "ambient_mode_deadband_f": 1.0, "pid_envelope_f": 1.0, "crash_mode_envelope_f": 2.0,
+            "ramp_pre_ramp_tolerance_f": 0.2, "ramp_thermostatic_deadband_f": 0.1, "ramp_pid_landing_zone_f": 0.5
+        }
+        for key, val in defaults.items(): self.stage_setting_change(key, val)
+
+    def set_control_mode(self, display_mode):
+        if not hasattr(self, 'settings_manager'): return
+        map_ui_to_internal = {
+            "Ambient": "Ambient Hold", "Beer": "Beer Hold",
+            "Ramp": "Ramp-Up", "Crash": "Fast Crash"
+        }
+        internal_mode = map_ui_to_internal.get(display_mode, "Ambient Hold")
+        self.settings_manager.set("control_mode", internal_mode)
+        if internal_mode != "Ramp-Up":
+            self.temp_controller.reset_ramp_state()
 
     def _sync_control_mode_from_backend(self, internal_mode):
         map_internal_to_ui = {

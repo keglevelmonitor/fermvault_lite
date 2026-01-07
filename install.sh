@@ -95,32 +95,32 @@ echo "--- [Step 5/5] Installing Desktop Shortcut ---"
 
 if [ -f "$DESKTOP_FILE_TEMPLATE" ]; then
     # 4a. Define paths
-    # Note: We point to the MAIN.PY in src, but we use the VENV python to execute it.
+    # Note: We point to the MAIN_kivy.PY in src, but we use the VENV python to execute it.
     # This ensures the app always uses the isolated libraries.
-    EXEC_CMD="$VENV_PYTHON_EXEC $PROJECT_DIR/src/main.py"
+    EXEC_CMD="$VENV_PYTHON_EXEC $PROJECT_DIR/src/main_kivy.py"
     ICON_PATH="$PROJECT_DIR/src/assets/fermenter.png"
     
     # 1. Copy to temp
-    cp "$DESKTOP_FILE_TEMPLATE" /tmp/fermvault_temp.desktop
+    cp "$DESKTOP_FILE_TEMPLATE" /tmp/fermvault_lite_temp.desktop
     
     # 2. Update Exec path to use VENV python
-    sed -i "s|Exec=PLACEHOLDER_EXEC_PATH|Exec=$EXEC_CMD|g" /tmp/fermvault_temp.desktop
+    sed -i "s|Exec=PLACEHOLDER_EXEC_PATH|Exec=$EXEC_CMD|g" /tmp/fermvault_lite_temp.desktop
     
     # 3. Update Path (working directory)
-    sed -i "s|Path=PLACEHOLDER_PATH|Path=$PROJECT_DIR/src|g" /tmp/fermvault_temp.desktop
+    sed -i "s|Path=PLACEHOLDER_PATH|Path=$PROJECT_DIR/src|g" /tmp/fermvault_lite_temp.desktop
 
     # 4. Update Icon path
-    sed -i "s|Icon=PLACEHOLDER_ICON_PATH|Icon=$ICON_PATH|g" /tmp/fermvault_temp.desktop
+    sed -i "s|Icon=PLACEHOLDER_ICON_PATH|Icon=$ICON_PATH|g" /tmp/fermvault_lite_temp.desktop
 
     # 5. NEW: Update the Name (so Lite and Standard look different in menu)
     # This assumes your template has "Name=Fermentation Vault" or similar. 
     # This appends/replaces purely based on the variable.
     # We use a broad regex to catch the existing Name= line and replace it.
-    sed -i "s|^Name=.*|Name=$APP_TITLE|g" /tmp/fermvault_temp.desktop
+    sed -i "s|^Name=.*|Name=$APP_TITLE|g" /tmp/fermvault_lite_temp.desktop
     
     # 6. Move to user applications folder
     mkdir -p "$HOME/.local/share/applications"
-    mv /tmp/fermvault_temp.desktop "$INSTALL_LOCATION"
+    mv /tmp/fermvault_lite_temp.desktop "$INSTALL_LOCATION"
     
     # 7. Make executable
     chmod +x "$INSTALL_LOCATION"
