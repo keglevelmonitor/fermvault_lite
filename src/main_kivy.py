@@ -657,27 +657,37 @@ class FermVaultApp(App):
         
         threading.Thread(target=_check, daemon=True).start()
 
+    #
+# Replace the existing run_update_script method
+
     def run_update_script(self):
         self.update_log_text += "\n\n[STARTING INSTALLATION]...\n"
         self.is_update_available = False 
         
         def _install():
             script_url = "https://github.com/keglevelmonitor/fermvault_lite/raw/main/update.sh"
-            local_script = "update.sh"
             
             try:
-                # 1. Download the script
-                msg_dl = f"Downloading update script from {script_url}...\n"
+                # 1. Determine Project Root (One level up from 'src')
+                # current file is in .../fermvault_lite/src
+                src_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(src_dir)
+                
+                local_script_path = os.path.join(project_root, "update.sh")
+
+                # 2. Download the script to PROJECT ROOT
+                msg_dl = f"Downloading update script to {local_script_path}...\n"
                 Clock.schedule_once(lambda dt: self._append_update_log(msg_dl), 0)
                 
-                subprocess.run(["curl", "-L", "-o", local_script, script_url], check=True)
-                subprocess.run(["chmod", "+x", local_script], check=True)
+                subprocess.run(["curl", "-L", "-o", local_script_path, script_url], check=True)
+                subprocess.run(["chmod", "+x", local_script_path], check=True)
                 
-                # 2. Run the script
+                # 3. Run the script FROM PROJECT ROOT
                 Clock.schedule_once(lambda dt: self._append_update_log("Executing update.sh...\n"), 0)
                 
                 process = subprocess.Popen(
-                    ["./" + local_script],
+                    ["./update.sh"],
+                    cwd=project_root, # <--- CRITICAL FIX: Run inside project root
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True
@@ -685,7 +695,6 @@ class FermVaultApp(App):
                 
                 # Read output line by line
                 for line in process.stdout:
-                    # Capture line variable for the closure
                     Clock.schedule_once(lambda dt, l=line: self._append_update_log(l), 0)
                 
                 process.wait()
@@ -698,7 +707,6 @@ class FermVaultApp(App):
                     Clock.schedule_once(lambda dt: self._append_update_log(f"\n[FAILURE] Script exited with code {code}"), 0)
 
             except Exception as e:
-                # FIX: Convert exception to string IMMEDIATELY
                 err_msg = str(e)
                 Clock.schedule_once(lambda dt: self._append_update_log(f"\n[CRITICAL ERROR] {err_msg}"), 0)
 
