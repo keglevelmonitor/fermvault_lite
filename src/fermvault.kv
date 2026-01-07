@@ -1,14 +1,12 @@
-#
-#:kivy 2.2.0 
+#:kivy 2.2.0
 
 # --- STYLES ---
 
-# MODIFIED: Scalable Control Row (No fixed height)
 <ControlRow@BoxLayout>:
     orientation: 'horizontal'
     spacing: 10
-    size_hint_y: 1  # Scalable: Fills available space equally
-    # height removed
+    size_hint_y: 1
+    # Scalable row
 
 <HeroActualLabel@Label>:
     font_size: '54sp'
@@ -16,7 +14,7 @@
     color: 1, 1, 1, 1
 
 <HeroTargetLabel@Label>:
-    font_size: '14sp'   # CHANGED: Was 27sp, now matches standard text
+    font_size: '14sp'
     bold: True
     color: 0.7, 0.7, 0.7, 1
 
@@ -43,12 +41,11 @@
     bold: True
     color: 0.7, 0.7, 0.7, 1
 
-# --- TEXT INPUT ROW (Fixed height kept for Settings) ---
 <SettingInputRow@BoxLayout>:
     orientation: 'horizontal'
     spacing: 10
     size_hint_y: None
-    height: 32 
+    height: 32
     padding: [10, 2]
     
     label_text: "Setting"
@@ -70,14 +67,13 @@
         size_hint_x: 0.4
         multiline: False
         font_size: '14sp'
-        padding: [10, 6, 10, 6] 
+        padding: [10, 6, 10, 6]
         background_color: 0.2, 0.2, 0.2, 1
         foreground_color: 1, 1, 1, 1
         cursor_color: 0, 1, 0, 1
         write_tab: False
         on_text: app.stage_text_input(root.key, self.text)
 
-# --- STEPPER ROW (Fixed height kept for Settings) ---
 <StepperRow@BoxLayout>:
     orientation: 'horizontal'
     spacing: 5
@@ -87,7 +83,7 @@
     
     label_text: "Target"
     value_text: "0.0"
-    key: "" 
+    key: ""
     min_val: 0.0
     max_val: 100.0
     step_val: 0.5
@@ -97,7 +93,7 @@
         text_size: self.size
         halign: 'left'
         valign: 'middle'
-        size_hint_x: 0.20 
+        size_hint_x: 0.20
         font_size: '14sp'
         bold: True
         color: 0.7, 0.7, 0.7, 1
@@ -110,13 +106,12 @@
         size_hint_x: 0.10
         font_size: '16sp'
         bold: True
-        # CHANGE THIS LINE:
         color: app.col_theme_blue
 
     Widget:
         size_hint_x: None
         width: 10
-
+    
     Button:
         text: "-"
         font_size: '20sp'
@@ -147,6 +142,91 @@
         height: 35
         pos_hint: {'center_y': 0.5}
         on_release: app.adjust_target(root.key, root.step_val)
+
+# --- REUSABLE FOOTERS (NEW) ---
+
+# Footer for Standard Settings Tabs (Targets, System, PID, etc.)
+<StandardSettingsFooter@GridLayout>:
+    cols: 5
+    size_hint_y: None
+    height: 50
+    spacing: 5
+    
+    Button:
+        text: "CANCEL/EXIT"
+        font_size: '14sp'
+        bold: True
+        on_release: app.check_unsaved_changes()
+        
+    Button:
+        text: "HELP"
+        font_size: '14sp'
+        bold: True
+        # Future: Pass context here, e.g. on_release: app.help("SYSTEM")
+    
+    Label:
+        text: "" # Spacer
+    
+    Button:
+        text: "RESET/DEFAULTS"
+        font_size: '14sp'
+        bold: True
+        on_release: app.reset_targets_to_defaults()
+        
+    Button:
+        text: "SAVE"
+        font_size: '14sp'
+        bold: True
+        background_color: 0.2, 0.8, 0.2, 1
+        on_release: app.save_and_exit()
+
+# Footer specifically for the UPDATES tab
+<UpdatesFooter@GridLayout>:
+    cols: 5
+    size_hint_y: None
+    height: 50
+    spacing: 5
+    
+    Button:
+        text: "EXIT"
+        font_size: '14sp'
+        bold: True
+        on_release: app.go_to_screen('dashboard', 'right')
+        
+    Button:
+        text: "HELP"
+        font_size: '14sp'
+        bold: True
+    
+    # ACTION 1: CHECK
+    Button:
+        text: "CHECK"
+        font_size: '14sp'
+        bold: True
+        background_color: 0.2, 0.6, 0.8, 1 # Blueish
+        on_release: app.check_for_updates()
+    
+    # ACTION 2: INSTALL (Disabled until update found)
+    Button:
+        text: "INSTALL"
+        font_size: '14sp'
+        bold: True
+        disabled: not app.is_update_available
+        background_disabled_normal: ''
+        background_disabled_down: ''
+        background_color: (0.2, 0.8, 0.2, 1) if app.is_update_available else (0.3, 0.3, 0.3, 1)
+        on_release: app.run_update_script()
+
+    # ACTION 3: RESTART (Disabled until success)
+    Button:
+        text: "RESTART APP"
+        font_size: '12sp' # Slightly smaller to fit
+        bold: True
+        disabled: not app.is_install_successful
+        background_disabled_normal: ''
+        background_disabled_down: ''
+        background_color: (1, 0.6, 0, 1) if app.is_install_successful else (0.3, 0.3, 0.3, 1)
+        on_release: app.restart_application()
 
 # --- CONFIRMATION POPUP ---
 <DirtyPopup@Popup>:
@@ -190,7 +270,7 @@
 
 # --- TABBED PANEL STYLE ---
 <TabbedPanelItem>:
-    font_size: '14sp'
+    font_size: '13sp' # Reduced slightly to fit 7 tabs
     bold: True
 
 # --- SCREEN 1: MAIN DASHBOARD ---
@@ -214,7 +294,6 @@
             size_hint_y: 0.10
             font_size: '22sp'
             bold: True
-            # CHANGE THIS LINE:
             color: app.col_theme_blue
             canvas.before:
                 Color:
@@ -223,7 +302,7 @@
                     pos: self.pos
                     size: self.size
 
-        # 2. BODY WRAPPER (SCALABLE: 69%) CHANGED TO 70%
+        # 2. BODY WRAPPER (SCALABLE: 70%)
         BoxLayout:
             orientation: 'vertical'
             size_hint_y: 0.70  
@@ -345,8 +424,8 @@
                     # -- Indicators --
                     BoxLayout:
                         spacing: 10
-                        size_hint_y: 1 # Scalable to match rows
-                        # height removed
+                        size_hint_y: 1
+                        
                         Label:
                             text: "HEATING"
                             bold: True
@@ -367,8 +446,6 @@
                                 Rectangle:
                                     pos: self.pos
                                     size: self.size
-                    
-                    # FILLER REMOVED so rows expand uniformly
 
                 # --- RIGHT COL: DATA DISPLAY ---
                 BoxLayout:
@@ -403,21 +480,17 @@
                             HeroHeaderLabel:
                                 text: "BEER"
                             
-                            # Actual (Big, TOP)
                             HeroActualLabel:
                                 text: app.beer_actual
                                 color: app.beer_actual_color
 
-                            # Spacer
                             Widget:
                                 size_hint_y: None
                                 height: 20
 
-                            # Target (14sp)
                             HeroTargetLabel:
                                 text: "Target: " + app.beer_target
 
-                            # Bottom Spacer
                             Widget:
                                 size_hint_y: None
                                 height: 20
@@ -436,25 +509,21 @@
                             HeroHeaderLabel:
                                 text: "AMBIENT"
 
-                            # Actual (Big, TOP)
                             HeroActualLabel:
                                 text: app.ambient_actual
                                 color: app.ambient_actual_color
 
-                            # Spacer
                             Widget:
                                 size_hint_y: None
                                 height: 20
 
-                            # Target (14sp)
                             HeroTargetLabel:
                                 text: "Target: " + app.ambient_target
                                 color: 0.7, 0.7, 0.7, 1
                             
-                            # Range (Now 14sp to match Target)
                             Label:
                                 text: "Range: " + app.ambient_range
-                                font_size: '14sp' # CHANGED: Was 12sp, now matches Target
+                                font_size: '14sp'
                                 bold: True
                                 color: 0.6, 0.6, 0.6, 1
                                 size_hint_y: None
@@ -462,37 +531,37 @@
 
                     # --- GRAVITY / STATUS (Bottom Strip) ---
                     GridLayout:
-                        size_hint_y: 0.40 # CHANGED: Increased from 0.25 (Buttons are taller now)
+                        size_hint_y: 0.40
                         cols: 3
                         spacing: 5
                         padding: [0, 5, 0, 5]
                         
                         Button:
                             text: app.og_full_text
-                            on_press: app.refresh_api_data()  # <--- ADD THIS LINE
+                            on_press: app.refresh_api_data()
                             halign: 'center'
                             font_size: '14sp'
                             bold: True
                         
                         Button:
                             text: app.sg_full_text
-                            on_press: app.refresh_api_data()  # <--- ADD THIS LINE
+                            on_press: app.refresh_api_data()
                             halign: 'center'
                             font_size: '14sp'
                             bold: True
                         
                         Button:
                             text: app.fg_full_text
-                            on_press: app.run_fg_calculator()  # <--- ADD THIS LINE
+                            on_press: app.run_fg_calculator()
                             halign: 'center'
                             font_size: '14sp'
                             bold: True
 
-        # 3. WARNING MESSAGE (SCALABLE: 8% IF ACTIVE, with 5px padding)
+        # 3. WARNING MESSAGE (SCALABLE: 8% IF ACTIVE)
         BoxLayout:
             size_hint_y: 0.08 if app.warning_message else 0
             opacity: 1 if app.warning_message else 0
-            padding: [0, 5, 0, 5]  # [left, top, right, bottom] 5px vertical padding
+            padding: [0, 5, 0, 5]
             
             Label:
                 text: app.warning_message
@@ -509,7 +578,6 @@
         # 4. FOOTER NAVIGATION (SCALABLE: 12%)
         BoxLayout:
             size_hint_y: 0.12
-            # Height removed
             spacing: 5
             
             Button:
@@ -524,11 +592,8 @@
                 bold: True
                 on_release: app.go_to_screen('settings', 'left')
 
-            Button:
-                text: "APP INFO"
-                font_size: '14sp'
-                bold: True
-                on_release: app.go_to_screen('info', 'left')
+            # APP INFO Button Removed - Now in Settings
+
             Button:
                 text: "HELP"
                 font_size: '14sp'
@@ -575,7 +640,7 @@
                     valign: 'middle'
                     text_size: self.size
             
-        # 2. LOG DISPLAY (Non-Bold, 14sp, Newest First)
+        # 2. LOG DISPLAY
         TextInput:
             text: app.log_text
             readonly: True
@@ -617,436 +682,392 @@
 
 # --- SCREEN 3: SETTINGS (TABBED) ---
 <SettingsScreen>:
+    # 1. NEW: Reset to Targets tab before screen appears
+    on_pre_enter: settings_tabs.switch_to(targets_tab)
+    
+    # Existing scan on enter
     on_enter: app.scan_sensors()
 
     BoxLayout:
         orientation: 'vertical'
-        padding: 5
+        padding: [10, 5]
         spacing: 5
         
         TabbedPanel:
+            id: settings_tabs  # <--- ID ADDED
             do_default_tab: False
-            tab_width: 120
+            tab_width: self.width / 7
             
-            # --- TAB 1: TARGETS (Sliders) ---
+            # --- TAB 1: TARGETS ---
             TabbedPanelItem:
+                id: targets_tab  # <--- ID ADDED
                 text: 'TARGETS'
                 
                 BoxLayout:
                     orientation: 'vertical'
-                    padding: [5, 10]
-                    spacing: 5
+                    padding: [0, 5, 0, 0]
                     
-                    StepperRow:
-                        label_text: "Ambient Target"
-                        key: "ambient_hold_f"
-                        value_text: app.ambient_hold_f
-                        min_val: -5.0
-                        max_val: 85.0
-                        step_val: 0.5
-                        
-                    StepperRow:
-                        label_text: "Beer Target"
-                        key: "beer_hold_f"
-                        value_text: app.beer_hold_f
-                        min_val: 40.0
-                        max_val: 85.0
-                        step_val: 0.5
-                        
-                    StepperRow:
-                        label_text: "Ramp Target"
-                        key: "ramp_up_hold_f"
-                        value_text: app.ramp_up_hold_f
-                        min_val: 40.0
-                        max_val: 85.0
-                        step_val: 0.5
-
-                    StepperRow:
-                        label_text: "Ramp Duration (Hrs)"
-                        key: "ramp_up_duration_hours"
-                        value_text: app.ramp_up_duration_hours
-                        min_val: 12.0
-                        max_val: 36.0
-                        step_val: 1.0
-
-                    StepperRow:
-                        label_text: "Crash Target"
-                        key: "fast_crash_hold_f"
-                        value_text: app.fast_crash_hold_f
-                        min_val: 32.0
-                        max_val: 50.0
-                        step_val: 0.5
-
-                    Label:
+                    # CONTENT
+                    BoxLayout:
+                        orientation: 'vertical'
+                        padding: [5, 10]
+                        spacing: 5
                         size_hint_y: 1
+                        
+                        StepperRow:
+                            label_text: "Ambient Target"
+                            key: "ambient_hold_f"
+                            value_text: app.ambient_hold_f
+                            min_val: -5.0
+                            max_val: 85.0
+                            step_val: 0.5
+                            
+                        StepperRow:
+                            label_text: "Beer Target"
+                            key: "beer_hold_f"
+                            value_text: app.beer_hold_f
+                            min_val: 40.0
+                            max_val: 85.0
+                            step_val: 0.5
+                            
+                        StepperRow:
+                            label_text: "Ramp Target"
+                            key: "ramp_up_hold_f"
+                            value_text: app.ramp_up_hold_f
+                            min_val: 40.0
+                            max_val: 85.0
+                            step_val: 0.5
 
-            # --- TAB 2: SYSTEM (Sensors & Text Inputs) ---
+                        StepperRow:
+                            label_text: "Ramp Duration (Hrs)"
+                            key: "ramp_up_duration_hours"
+                            value_text: app.ramp_up_duration_hours
+                            min_val: 12.0
+                            max_val: 36.0
+                            step_val: 1.0
+
+                        StepperRow:
+                            label_text: "Crash Target"
+                            key: "fast_crash_hold_f"
+                            value_text: app.fast_crash_hold_f
+                            min_val: 32.0
+                            max_val: 50.0
+                            step_val: 0.5
+
+                        Label:
+                            size_hint_y: 1
+
+                    # FOOTER
+                    StandardSettingsFooter:
+
+            # --- TAB 2: SYSTEM ---
             TabbedPanelItem:
                 text: 'SYSTEM'
                 
-                GridLayout:
-                    cols: 1
-                    padding: 10
-                    spacing: 5
-                    size_hint_y: 1
-
-                    # 1. SENSORS
-                    SettingRow:
-                        height: 35
-                        SettingLabel:
-                            text: "Beer Sensor"
-                        Spinner:
-                            text: app.ds18b20_beer_sensor
-                            values: app.available_sensors
-                            size_hint_x: 0.6
-                            on_text: app.save_sensor_setting("beer", self.text)
-
-                    SettingRow:
-                        height: 35
-                        SettingLabel:
-                            text: "Ambient Sensor"
-                        Spinner:
-                            text: app.ds18b20_ambient_sensor
-                            values: app.available_sensors
-                            size_hint_x: 0.6
-                            on_text: app.save_sensor_setting("ambient", self.text)
-
-                    # 2. RELAY LOGIC
-                    SettingRow:
-                        height: 35
-                        SettingLabel:
-                            text: "Relay Activation"
-                        BoxLayout:
-                            size_hint_x: 0.6
-                            spacing: 10
-                            ToggleButton:
-                                text: "Active HIGH"
-                                group: "logic"
-                                state: 'down' if app.relay_active_high else 'normal'
-                                on_release: app.set_relay_logic(True)
-                            ToggleButton:
-                                text: "Active LOW"
-                                group: "logic"
-                                state: 'normal' if app.relay_active_high else 'down'
-                                on_release: app.set_relay_logic(False)
-
-                    # Divider
-                    Label:
-                        size_hint_y: None
-                        height: 10
-                        canvas:
-                            Color: 
-                                rgba: 0.3, 0.3, 0.3, 1
-                            Line: 
-                                points: [self.x+10, self.y+5, self.right-10, self.y+5]
-
-                    # 3. COOLING OPERATIONS (Text Inputs)
-                    SettingInputRow:
-                        label_text: "Cooling Dwell Time (min)"
-                        value_text: app.cooling_dwell_time_s
-                        key: "cooling_dwell_time_s"
-
-                    SettingInputRow:
-                        label_text: "Max Cool Runtime (min)"
-                        value_text: app.max_cool_runtime_s
-                        key: "max_cool_runtime_s"
-
-                    SettingInputRow:
-                        label_text: "Fail-Safe Off Period (min)"
-                        value_text: app.fail_safe_shutdown_time_s
-                        key: "fail_safe_shutdown_time_s"
-
-                    # Filler
-                    Label:
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: [0, 5, 0, 0]
+                    
+                    GridLayout:
+                        cols: 1
+                        padding: 10
+                        spacing: 5
                         size_hint_y: 1
 
-            # --- TAB 3: NOTIFICATIONS (PLACEHOLDER) ---
+                        # SENSORS
+                        SettingRow:
+                            height: 35
+                            SettingLabel:
+                                text: "Beer Sensor"
+                            Spinner:
+                                text: app.ds18b20_beer_sensor
+                                values: app.available_sensors
+                                size_hint_x: 0.6
+                                on_text: app.save_sensor_setting("beer", self.text)
+
+                        SettingRow:
+                            height: 35
+                            SettingLabel:
+                                text: "Ambient Sensor"
+                            Spinner:
+                                text: app.ds18b20_ambient_sensor
+                                values: app.available_sensors
+                                size_hint_x: 0.6
+                                on_text: app.save_sensor_setting("ambient", self.text)
+
+                        # RELAY LOGIC
+                        SettingRow:
+                            height: 35
+                            SettingLabel:
+                                text: "Relay Activation"
+                            BoxLayout:
+                                size_hint_x: 0.6
+                                spacing: 10
+                                ToggleButton:
+                                    text: "Active HIGH"
+                                    group: "logic"
+                                    state: 'down' if app.relay_active_high else 'normal'
+                                    on_release: app.set_relay_logic(True)
+                                ToggleButton:
+                                    text: "Active LOW"
+                                    group: "logic"
+                                    state: 'normal' if app.relay_active_high else 'down'
+                                    on_release: app.set_relay_logic(False)
+
+                        # Divider
+                        Label:
+                            size_hint_y: None
+                            height: 10
+                            canvas:
+                                Color: 
+                                    rgba: 0.3, 0.3, 0.3, 1
+                                Line: 
+                                    points: [self.x+10, self.y+5, self.right-10, self.y+5]
+
+                        # COOLING OPERATIONS
+                        SettingInputRow:
+                            label_text: "Cooling Dwell Time (min)"
+                            value_text: app.cooling_dwell_time_s
+                            key: "cooling_dwell_time_s"
+
+                        SettingInputRow:
+                            label_text: "Max Cool Runtime (min)"
+                            value_text: app.max_cool_runtime_s
+                            key: "max_cool_runtime_s"
+
+                        SettingInputRow:
+                            label_text: "Fail-Safe Off Period (min)"
+                            value_text: app.fail_safe_shutdown_time_s
+                            key: "fail_safe_shutdown_time_s"
+
+                        Label:
+                            size_hint_y: 1
+
+                    # FOOTER
+                    StandardSettingsFooter:
+
+            # --- TAB 3: ALERTS ---
             TabbedPanelItem:
-                text: 'NOTIFICATIONS'
-                Label:
-                    text: "Notification & Email Settings\n(Coming Soon)"
+                text: 'ALERTS'
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: [0, 5, 0, 0]
+                    
+                    Label:
+                        text: "Notification & Email Settings\n(Coming Soon)"
+                        size_hint_y: 1
+                    
+                    # FOOTER
+                    StandardSettingsFooter:
 
             # --- TAB 4: API & FG ---
             TabbedPanelItem:
                 text: 'API & FG'
                 
-                GridLayout:
-                    cols: 1
-                    padding: 10
-                    spacing: 2
-                    size_hint_y: 1
-
-                    # API KEY INPUT
-                    SettingInputRow:
-                        label_text: "API Key"
-                        value_text: app.api_key
-                        key: "api_key"
-
-                    # API FREQUENCY SLIDER
-                    StepperRow:
-                        label_text: "API Call Freq (min)"
-                        key: "api_call_frequency_m"
-                        value_text: app.api_call_frequency_m
-                        min_val: 1.0
-                        max_val: 60.0
-                        step_val: 1.0
-
-                    # SEPARATOR
-                    Label:
-                        size_hint_y: None
-                        height: 10
-                        canvas:
-                            Color: 
-                                rgba: 0.3, 0.3, 0.3, 1
-                            Line: 
-                                points: [self.x+10, self.y+5, self.right-10, self.y+5]
-
-                    # FG SETTINGS
-                    StepperRow:
-                        label_text: "FG Check Freq (hrs)"
-                        key: "fg_check_frequency_h"
-                        value_text: app.fg_check_frequency_h
-                        min_val: 12.0
-                        max_val: 48.0
-                        step_val: 6.0
-
-                    StepperRow:
-                        label_text: "SG Range Tolerance"
-                        key: "tolerance"
-                        value_text: app.tolerance
-                        min_val: 0.0001
-                        max_val: 0.0500
-                        step_val: 0.0001
-
-                    StepperRow:
-                        label_text: "SG Records Window"
-                        key: "window_size"
-                        value_text: app.window_size
-                        min_val: 100.0
-                        max_val: 1000.0
-                        step_val: 25.0
-
-                    StepperRow:
-                        label_text: "Max SG Outliers"
-                        key: "max_outliers"
-                        value_text: app.max_outliers
-                        min_val: 0.0
-                        max_val: 20.0
-                        step_val: 1.0
-
-                    # Filler
-                    Label:
-                        size_hint_y: 1
-
-            # --- TAB 5: PID & TUNING (Text Inputs) ---
-            TabbedPanelItem:
-                text: 'PID & TUNING'
-                
-                GridLayout:
-                    cols: 1
-                    padding: 10
-                    spacing: 2
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: [0, 5, 0, 0]
                     
-                    SettingInputRow:
-                        label_text: "Kp"
-                        value_text: app.pid_kp
-                        key: "pid_kp"
-                        
-                    SettingInputRow:
-                        label_text: "Ki"
-                        value_text: app.pid_ki
-                        key: "pid_ki"
-                        
-                    SettingInputRow:
-                        label_text: "Kd"
-                        value_text: app.pid_kd
-                        key: "pid_kd"
-                        
-                    SettingInputRow:
-                        label_text: "Ambient Mode Deadband"
-                        value_text: app.ambient_mode_deadband_f
-                        key: "ambient_mode_deadband_f"
-                        
-                    SettingInputRow:
-                        label_text: "PID Envelope (Beer/Ramp)"
-                        value_text: app.pid_envelope_f
-                        key: "pid_envelope_f"
-                        
-                    SettingInputRow:
-                        label_text: "Crash Mode Envelope Width"
-                        value_text: app.crash_mode_envelope_f
-                        key: "crash_mode_envelope_f"
-                        
-                    SettingInputRow:
-                        label_text: "Ramp: Pre-Ramp Tolerance"
-                        value_text: app.ramp_pre_ramp_tolerance_f
-                        key: "ramp_pre_ramp_tolerance_f"
-                        
-                    SettingInputRow:
-                        label_text: "Ramp: Thermostatic Deadband"
-                        value_text: app.ramp_thermostatic_deadband_f
-                        key: "ramp_thermostatic_deadband_f"
-                        
-                    SettingInputRow:
-                        label_text: "Ramp: PID Landing Zone"
-                        value_text: app.ramp_pid_landing_zone_f
-                        key: "ramp_pid_landing_zone_f"
-
-                    # Filler
-                    Label:
+                    GridLayout:
+                        cols: 1
+                        padding: 10
+                        spacing: 2
                         size_hint_y: 1
 
-        # FOOTER: 5 COLUMNS
-        GridLayout:
-            cols: 5
-            size_hint_y: None
-            height: 50
-            spacing: 5
-            
-            Button:
-                text: "CANCEL/EXIT"
-                font_size: '14sp'
-                bold: True
-                on_release: app.check_unsaved_changes()
-                
-            Button:
-                text: "HELP"
-                font_size: '14sp'
-                bold: True
-            
-            Label:
-                text: ""
-            
-            Button:
-                text: "RESET/DEFAULTS"
-                font_size: '14sp'
-                bold: True
-                on_release: app.reset_targets_to_defaults()
-                
-            Button:
-                text: "SAVE"
-                font_size: '14sp'
-                bold: True
-                background_color: 0.2, 0.8, 0.2, 1
-                on_release: app.save_and_exit()
+                        SettingInputRow:
+                            label_text: "API Key"
+                            value_text: app.api_key
+                            key: "api_key"
 
-<InfoScreen>:
-    BoxLayout:
-        orientation: 'vertical'
-        padding: 5
-        spacing: 5
-        canvas.before:
-            Color:
-                rgba: 0.1, 0.1, 0.1, 1
-            Rectangle:
-                pos: self.pos
-                size: self.size
-        
-        # TITLE
-        Label:
-            text: "Application Info & Maintenance"
-            size_hint_y: 0.10
-            font_size: '18sp'
-            bold: True
-            color: app.col_theme_blue
-            canvas.before:
-                Color:
-                    rgba: 0.05, 0.05, 0.05, 1
-                Rectangle:
-                    pos: self.pos
-                    size: self.size
+                        StepperRow:
+                            label_text: "API Call Freq (min)"
+                            key: "api_call_frequency_m"
+                            value_text: app.api_call_frequency_m
+                            min_val: 1.0
+                            max_val: 60.0
+                            step_val: 1.0
 
-        # TABS
-        TabbedPanel:
-            do_default_tab: False
-            tab_width: 150
-            size_hint_y: 0.78 # Remaining space minus title/footer
-            
-            # --- TAB 1: UPDATES ---
+                        Label:
+                            size_hint_y: None
+                            height: 10
+                            canvas:
+                                Color: 
+                                    rgba: 0.3, 0.3, 0.3, 1
+                                Line: 
+                                    points: [self.x+10, self.y+5, self.right-10, self.y+5]
+
+                        StepperRow:
+                            label_text: "FG Check Freq (hrs)"
+                            key: "fg_check_frequency_h"
+                            value_text: app.fg_check_frequency_h
+                            min_val: 12.0
+                            max_val: 48.0
+                            step_val: 6.0
+
+                        StepperRow:
+                            label_text: "SG Range Tolerance"
+                            key: "tolerance"
+                            value_text: app.tolerance
+                            min_val: 0.0001
+                            max_val: 0.0500
+                            step_val: 0.0001
+
+                        StepperRow:
+                            label_text: "SG Records Window"
+                            key: "window_size"
+                            value_text: app.window_size
+                            min_val: 100.0
+                            max_val: 1000.0
+                            step_val: 25.0
+
+                        StepperRow:
+                            label_text: "Max SG Outliers"
+                            key: "max_outliers"
+                            value_text: app.max_outliers
+                            min_val: 0.0
+                            max_val: 20.0
+                            step_val: 1.0
+
+                        Label:
+                            size_hint_y: 1
+                    
+                    # FOOTER
+                    StandardSettingsFooter:
+
+            # --- TAB 5: PID ---
+            TabbedPanelItem:
+                text: 'PID TUNING'
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: [0, 5, 0, 0]
+                    
+                    GridLayout:
+                        cols: 1
+                        padding: 10
+                        spacing: 2
+                        size_hint_y: 1
+                        
+                        SettingInputRow:
+                            label_text: "Kp"
+                            value_text: app.pid_kp
+                            key: "pid_kp"
+                            
+                        SettingInputRow:
+                            label_text: "Ki"
+                            value_text: app.pid_ki
+                            key: "pid_ki"
+                            
+                        SettingInputRow:
+                            label_text: "Kd"
+                            value_text: app.pid_kd
+                            key: "pid_kd"
+                            
+                        SettingInputRow:
+                            label_text: "Ambient Mode Deadband"
+                            value_text: app.ambient_mode_deadband_f
+                            key: "ambient_mode_deadband_f"
+                            
+                        SettingInputRow:
+                            label_text: "PID Envelope (Beer/Ramp)"
+                            value_text: app.pid_envelope_f
+                            key: "pid_envelope_f"
+                            
+                        SettingInputRow:
+                            label_text: "Crash Mode Envelope Width"
+                            value_text: app.crash_mode_envelope_f
+                            key: "crash_mode_envelope_f"
+                            
+                        SettingInputRow:
+                            label_text: "Ramp: Pre-Ramp Tolerance"
+                            value_text: app.ramp_pre_ramp_tolerance_f
+                            key: "ramp_pre_ramp_tolerance_f"
+                            
+                        SettingInputRow:
+                            label_text: "Ramp: Thermostatic Deadband"
+                            value_text: app.ramp_thermostatic_deadband_f
+                            key: "ramp_thermostatic_deadband_f"
+                            
+                        SettingInputRow:
+                            label_text: "Ramp: PID Landing Zone"
+                            value_text: app.ramp_pid_landing_zone_f
+                            key: "ramp_pid_landing_zone_f"
+
+                        Label:
+                            size_hint_y: 1
+
+                    # FOOTER
+                    StandardSettingsFooter:
+
+            # --- TAB 6: UPDATES ---
             TabbedPanelItem:
                 text: 'UPDATES'
                 
                 BoxLayout:
                     orientation: 'vertical'
-                    padding: 10
-                    spacing: 10
+                    padding: [0, 5, 0, 0]
                     
-                    Label:
-                        text: "Software Update Log"
-                        size_hint_y: None
-                        height: 30
-                        halign: 'left'
-                        text_size: self.size
-                        bold: True
-                        color: 0.7, 0.7, 0.7, 1
+                    # CONTENT
+                    BoxLayout:
+                        orientation: 'vertical'
+                        padding: 10
+                        spacing: 10
+                        size_hint_y: 1
+                        
+                        Label:
+                            text: "Software Update Log"
+                            size_hint_y: None
+                            height: 30
+                            halign: 'left'
+                            text_size: self.size
+                            bold: True
+                            color: 0.7, 0.7, 0.7, 1
 
-                    TextInput:
-                        text: app.update_log_text
-                        readonly: True
-                        font_size: '13sp'
-                        font_name: 'RobotoMono-Regular' if 'RobotoMono-Regular' in getattr(app, 'fonts', []) else 'Roboto' 
-                        background_color: 0.15, 0.15, 0.15, 1
-                        foreground_color: 0.9, 0.9, 0.9, 1
+                        TextInput:
+                            text: app.update_log_text
+                            readonly: True
+                            font_size: '13sp'
+                            font_name: 'RobotoMono-Regular' if 'RobotoMono-Regular' in getattr(app, 'fonts', []) else 'Roboto' 
+                            background_color: 0.15, 0.15, 0.15, 1
+                            foreground_color: 0.9, 0.9, 0.9, 1
+                    
+                    # SPECIAL UPDATES FOOTER
+                    UpdatesFooter:
 
-            # --- TAB 2: RESET/UNINSTALL (Placeholder) ---
-            TabbedPanelItem:
-                text: 'RESET/UNINSTALL'
-                Label:
-                    text: "Factory Reset & Uninstall Options\n(Coming Soon)"
-                    halign: 'center'
-
-            # --- TAB 3: ABOUT (Placeholder) ---
+            # --- TAB 7: ABOUT ---
             TabbedPanelItem:
                 text: 'ABOUT'
-                Label:
-                    text: "FermVault Lite v1.0\nCreated by Keg Level Monitor\n(Coming Soon)"
-                    halign: 'center'
-
-        # FOOTER: 5 COLUMNS
-        GridLayout:
-            cols: 5
-            size_hint_y: 0.12
-            spacing: 5
-            
-            Button:
-                text: "CANCEL/EXIT"
-                font_size: '14sp'
-                bold: True
-                on_release: app.go_to_screen('dashboard', 'right')
                 
-            Button:
-                text: "HELP"
-                font_size: '14sp'
-                bold: True
-            
-            # ACTION 1: CHECK
-            Button:
-                text: "CHECK"
-                font_size: '14sp'
-                bold: True
-                background_color: 0.2, 0.6, 0.8, 1 # Blueish
-                on_release: app.check_for_updates()
-            
-            # ACTION 2: INSTALL (Disabled until update found)
-            Button:
-                text: "INSTALL"
-                font_size: '14sp'
-                bold: True
-                disabled: not app.is_update_available
-                # Gray if disabled, Green if enabled
-                background_disabled_normal: ''
-                background_disabled_down: ''
-                background_color: (0.2, 0.8, 0.2, 1) if app.is_update_available else (0.3, 0.3, 0.3, 1)
-                on_release: app.run_update_script()
-
-            # ACTION 3: RESTART (Disabled until success)
-            Button:
-                text: "RESTART APP"
-                font_size: '14sp'
-                bold: True
-                disabled: not app.is_install_successful
-                # Gray if disabled, Amber if enabled
-                background_disabled_normal: ''
-                background_disabled_down: ''
-                background_color: (1, 0.6, 0, 1) if app.is_install_successful else (0.3, 0.3, 0.3, 1)
-                on_release: app.restart_application()
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: [0, 5, 0, 0]
+                    
+                    Label:
+                        text: "FermVault Lite v1.0\nCreated by Keg Level Monitor\n(Coming Soon)"
+                        halign: 'center'
+                        size_hint_y: 1
+                    
+                    # SIMPLE FOOTER
+                    GridLayout:
+                        cols: 5
+                        size_hint_y: None
+                        height: 50
+                        spacing: 5
+                        
+                        Button:
+                            text: "CANCEL/EXIT"
+                            font_size: '14sp'
+                            bold: True
+                            on_release: app.check_unsaved_changes()
+                            
+                        Button:
+                            text: "HELP"
+                            font_size: '14sp'
+                            bold: True
+                        
+                        Label:
+                            text: ""
+                        Label:
+                            text: ""
+                        Label:
+                            text: "" # No Save button here
