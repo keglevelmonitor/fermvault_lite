@@ -157,7 +157,7 @@ class FermVaultApp(App):
     ambient_range = StringProperty("--.-")
     heater_color = ListProperty([0.2, 0.2, 0.2, 1]) 
     cooler_color = ListProperty([0.2, 0.2, 0.2, 1])
-    control_mode_display = StringProperty("Ambient")
+    control_mode_display = StringProperty("AMBIENT")
     monitoring_state = StringProperty("OFF")
     log_text = StringProperty("[System] UI Initialized.\n")
     warning_message = StringProperty("")
@@ -532,7 +532,7 @@ class FermVaultApp(App):
                 self.ambient_actual_color = COL_WHITE
 
             # Beer Logic
-            if "Ambient" in self.control_mode_display:
+            if "AMBIENT" in self.control_mode_display:
                 self.beer_actual_color = COL_LGRAY
             else:
                 try:
@@ -597,6 +597,12 @@ class FermVaultApp(App):
                 self.fg_text_color = [1, 1, 1, 1] # White
             
     # --- OTHER METHODS ---
+    def set_aux_mode(self, mode_value):
+        """Called when Aux Relay Spinner is changed on Dashboard."""
+        if hasattr(self, 'settings_manager'):
+            self.settings_manager.set("aux_relay_mode", mode_value)
+            self.log_system_message(f"Aux Relay Mode set to: {mode_value}")
+    
     def scan_sensors(self):
         if not hasattr(self, 'temp_controller') or not self.temp_controller: return
         self._refresh_all_settings_from_manager()
@@ -740,8 +746,8 @@ class FermVaultApp(App):
     def set_control_mode(self, display_mode):
         if not hasattr(self, 'settings_manager'): return
         map_ui_to_internal = {
-            "Ambient": "Ambient Hold", "Beer": "Beer Hold",
-            "Ramp": "Ramp-Up", "Crash": "Fast Crash"
+            "AMBIENT": "Ambient Hold", "BEER": "Beer Hold",
+            "RAMP": "Ramp-Up", "CRASH": "Fast Crash"
         }
         internal_mode = map_ui_to_internal.get(display_mode, "Ambient Hold")
         self.settings_manager.set("control_mode", internal_mode)
@@ -750,10 +756,10 @@ class FermVaultApp(App):
 
     def _sync_control_mode_from_backend(self, internal_mode):
         map_internal_to_ui = {
-            "Ambient Hold": "Ambient", "Beer Hold": "Beer",
-            "Ramp-Up": "Ramp", "Fast Crash": "Crash", "OFF": "Ambient"
+            "Ambient Hold": "AMBIENT", "Beer Hold": "BEER",
+            "Ramp-Up": "RAMP", "Fast Crash": "CRASH", "OFF": "AMBIENT"
         }
-        ui_value = map_internal_to_ui.get(internal_mode, "Ambient")
+        ui_value = map_internal_to_ui.get(internal_mode, "AMBIENT")
         if self.control_mode_display != ui_value:
             self.control_mode_display = ui_value
 

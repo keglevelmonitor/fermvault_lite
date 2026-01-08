@@ -202,24 +202,25 @@ class RelayControl:
         
         # --- NEW: AUX RELAY LOGIC WITH OVERRIDE ---
         # Determine Aux state based on the selected mode OR the override
-        aux_mode = self.settings.get("aux_relay_mode", "Monitoring")
+        # UPDATE: Default changed to Uppercase to match KV
+        aux_mode = self.settings.get("aux_relay_mode", "MONITORING")
         aux_state = False
         
         if aux_override:
             aux_state = True
-        elif aux_mode == "Always ON":
+        elif aux_mode == "ALWAYS ON": # Changed to UPPERCASE
             aux_state = True
-        elif aux_mode == "Always OFF":
+        elif aux_mode == "ALWAYS OFF": # Changed to UPPERCASE
             aux_state = False
-        elif aux_mode == "Monitoring":
+        elif aux_mode == "MONITORING": # Changed to UPPERCASE
             # ON if control_mode is NOT "OFF" (implies monitoring is active)
             aux_state = (control_mode != "OFF")
-        elif aux_mode == "Heating":
+        elif aux_mode == "HEATING": # Changed to UPPERCASE
             aux_state = final_heat_state
-        elif aux_mode == "Cooling":
+        elif aux_mode == "COOLING": # Changed to UPPERCASE
             # Follows the ACTUAL cooling relay state
             aux_state = final_cool_state
-        elif aux_mode == "Crashing":
+        elif aux_mode == "CRASHING": # Changed to UPPERCASE
             # ON only if mode is Fast Crash AND monitoring (control_mode != OFF)
             aux_state = (control_mode == "Fast Crash")
             
@@ -239,7 +240,6 @@ class RelayControl:
         self.settings.set("fan_state", "Aux ON" if aux_state else "Aux OFF")
         
         return final_heat_state, final_cool_state
-
     # --- FAN CONTROL ---
     # FIXED
     def turn_on_fan(self):

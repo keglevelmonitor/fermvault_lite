@@ -1,84 +1,152 @@
 #:kivy 2.2.0
+#:import Window kivy.core.window.Window
+#:import Factory kivy.factory.Factory
 
-# --- STYLES ---
+# --- 1. T-SHIRT SIZE TEXT STYLES ---
+# Reference Screen Height: 480px
+# All styles are BOLD.
+
+<Text_Small@Label>:
+    # 3% of Height (~14px on 480p)
+    font_size: Window.height * 0.03
+    bold: True
+    color: 0.7, 0.7, 0.7, 1
+
+<Text_Medium@Label>:
+    # 4% of Height (~19px on 480p)
+    font_size: Window.height * 0.04
+    bold: True
+    color: 0.8, 0.8, 0.8, 1
+
+<Text_Large@Label>:
+    # 5% of Height (~24px on 480p)
+    font_size: Window.height * 0.05
+    bold: True
+    color: app.col_theme_blue
+
+<Text_Hero@Label>:
+    # 11% of Height (~53px on 480p)
+    font_size: Window.height * 0.11
+    bold: True
+    color: 1, 1, 1, 1
+
+
+# --- 2. INTERACTIVE WIDGETS ---
+
+# -- Spinner Option Style --
+<ScaledSpinnerOption@SpinnerOption>:
+    font_size: Window.height * 0.035
+    bold: True
+    height: Window.height * 0.085
+
+# -- MEDIUM WIDGETS (Dashboard/Footers) --
+<ScaledButton@Button>:
+    font_size: Window.height * 0.04
+    bold: True
+
+<ScaledSpinner@Spinner>:
+    font_size: Window.height * 0.04
+    bold: True
+    option_cls: Factory.get("ScaledSpinnerOption")
+
+<ScaledTextInput@TextInput>:
+    font_size: Window.height * 0.04
+    bold: True
+    padding: [10, Window.height * 0.01, 10, Window.height * 0.01]
+    # LIGHT GRAY BACKGROUND (0.4) for visibility
+    background_color: 0.4, 0.4, 0.4, 1
+    foreground_color: 1, 1, 1, 1
+    cursor_color: 0, 1, 0, 1
+    write_tab: False
+    multiline: False
+
+# -- SMALL WIDGETS (Settings Screen) --
+<ScaledSmallButton@Button>:
+    font_size: Window.height * 0.03
+    bold: True
+
+<ScaledSmallSpinner@Spinner>:
+    font_size: Window.height * 0.03
+    bold: True
+    option_cls: Factory.get("ScaledSpinnerOption")
+
+<ScaledSmallTextInput@TextInput>:
+    font_size: Window.height * 0.03
+    bold: True
+    padding: [10, Window.height * 0.0125, 10, Window.height * 0.0125]
+    # LIGHT GRAY BACKGROUND (0.4) for visibility
+    background_color: 0.4, 0.4, 0.4, 1
+    foreground_color: 1, 1, 1, 1
+    cursor_color: 0, 1, 0, 1
+    write_tab: False
+    multiline: False
+
+
+# --- 3. COMPOSITE WIDGETS & ROWS ---
 
 <ControlRow@BoxLayout>:
     orientation: 'horizontal'
     spacing: 10
     size_hint_y: 1
-    # Scalable row
 
-<HeroActualLabel@Label>:
-    font_size: '54sp'
-    bold: True
-    color: 1, 1, 1, 1
+<HeroActualLabel@Text_Hero>:
+    # Inherits 11%
 
-<HeroTargetLabel@Label>:
-    font_size: '14sp'
-    bold: True
-    color: 0.7, 0.7, 0.7, 1
-
-<HeroHeaderLabel@Label>:
-    font_size: '18sp'
-    bold: True
+<HeroHeaderLabel@Text_Medium>:
+    # Inherits 4%
     color: 0.7, 0.7, 0.7, 1
     size_hint_y: None
     height: 30
+
+<HeroTargetLabel@Text_Medium>:
+    # Inherits 4%
+    color: 0.7, 0.7, 0.7, 1
+
+# -- DYNAMIC SETTINGS ROWS --
 
 <SettingRow@BoxLayout>:
     orientation: 'horizontal'
     spacing: 10
     size_hint_y: None
-    height: 40
+    height: Window.height * 0.085
     padding: [10, 5]
 
-<SettingLabel@Label>:
+<SettingLabel@Text_Medium>:
     text_size: self.size
     halign: 'right'
     valign: 'middle'
     size_hint_x: 0.4
-    font_size: '14sp'
-    bold: True
     color: 0.7, 0.7, 0.7, 1
 
 <SettingInputRow@BoxLayout>:
     orientation: 'horizontal'
     spacing: 10
     size_hint_y: None
-    height: 32
+    height: Window.height * 0.07
     padding: [10, 2]
     
     label_text: "Setting"
     value_text: "0.0"
     key: ""
-    
-    Label:
+   
+    Text_Medium:
         text: root.label_text
         text_size: self.size
         halign: 'right'
         valign: 'middle'
         size_hint_x: 0.6
-        font_size: '14sp'
-        bold: True
         color: 0.8, 0.8, 0.8, 1
 
-    TextInput:
+    ScaledSmallTextInput:
         text: root.value_text
         size_hint_x: 0.4
-        multiline: False
-        font_size: '14sp'
-        padding: [10, 6, 10, 6]
-        background_color: 0.2, 0.2, 0.2, 1
-        foreground_color: 1, 1, 1, 1
-        cursor_color: 0, 1, 0, 1
-        write_tab: False
         on_text: app.stage_text_input(root.key, self.text)
 
 <StepperRow@BoxLayout>:
     orientation: 'horizontal'
     spacing: 5
     size_hint_y: None
-    height: 55
+    height: Window.height * 0.12
     padding: [5, 0]
     
     label_text: "Target"
@@ -88,34 +156,28 @@
     max_val: 100.0
     step_val: 0.5
     
-    Label:
+    Text_Medium:
         text: root.label_text
         text_size: self.size
         halign: 'left'
         valign: 'middle'
         size_hint_x: 0.20
-        font_size: '14sp'
-        bold: True
         color: 0.7, 0.7, 0.7, 1
         
-    Label:
+    Text_Medium:
         text: root.value_text
         text_size: self.size
         halign: 'right'
         valign: 'middle'
         size_hint_x: 0.10
-        font_size: '16sp'
-        bold: True
         color: app.col_theme_blue
 
     Widget:
         size_hint_x: None
         width: 10
     
-    Button:
+    ScaledSmallButton:
         text: "-"
-        font_size: '20sp'
-        bold: True
         size_hint_x: None
         width: 45
         size_hint_y: None
@@ -132,10 +194,8 @@
         value: float(root.value_text) if root.value_text != "--.-" else root.min_val
         on_value: app.save_target_from_slider(root.key, self.value)
 
-    Button:
+    ScaledSmallButton:
         text: "+"
-        font_size: '20sp'
-        bold: True
         size_hint_x: None
         width: 45
         size_hint_y: None
@@ -143,92 +203,91 @@
         pos_hint: {'center_y': 0.5}
         on_release: app.adjust_target(root.key, root.step_val)
 
-# --- REUSABLE FOOTERS (NEW) ---
 
-# Footer for Standard Settings Tabs (Targets, System, PID, etc.)
+# --- 4. REUSABLE FOOTERS (SCALABLE: 12%) ---
+
 <StandardSettingsFooter@GridLayout>:
     cols: 5
-    size_hint_y: None
-    height: 50
+    size_hint_y: 0.12
     spacing: 5
     
-    Button:
+    ScaledButton:
         text: "CANCEL/EXIT"
-        font_size: '14sp'
-        bold: True
         on_release: app.check_unsaved_changes()
         
-    Button:
+    ScaledButton:
         text: "HELP"
-        font_size: '14sp'
-        bold: True
-        # Future: Pass context here, e.g. on_release: app.help("SYSTEM")
     
     Label:
         text: "" # Spacer
     
-    Button:
+    ScaledButton:
         text: "RESET/DEFAULTS"
-        font_size: '14sp'
-        bold: True
         on_release: app.reset_targets_to_defaults()
         
-    Button:
+    ScaledButton:
         text: "SAVE"
-        font_size: '14sp'
-        bold: True
         background_color: 0.2, 0.8, 0.2, 1
         on_release: app.save_and_exit()
 
-# Footer specifically for the UPDATES tab
 <UpdatesFooter@GridLayout>:
     cols: 5
-    size_hint_y: None
-    height: 50
+    size_hint_y: 0.12
     spacing: 5
     
-    Button:
+    ScaledButton:
         text: "EXIT"
-        font_size: '14sp'
-        bold: True
         on_release: app.go_to_screen('dashboard', 'right')
         
-    Button:
+    ScaledButton:
         text: "HELP"
-        font_size: '14sp'
-        bold: True
     
     # ACTION 1: CHECK
-    Button:
+    ScaledButton:
         text: "CHECK"
-        font_size: '14sp'
-        bold: True
         background_color: 0.2, 0.6, 0.8, 1 # Blueish
         on_release: app.check_for_updates()
     
-    # ACTION 2: INSTALL (Disabled until update found)
-    Button:
+    # ACTION 2: INSTALL
+    ScaledButton:
         text: "INSTALL"
-        font_size: '14sp'
-        bold: True
         disabled: not app.is_update_available
         background_disabled_normal: ''
         background_disabled_down: ''
         background_color: (0.2, 0.8, 0.2, 1) if app.is_update_available else (0.3, 0.3, 0.3, 1)
         on_release: app.run_update_script()
 
-    # ACTION 3: RESTART (Disabled until success)
-    Button:
+    # ACTION 3: RESTART
+    ScaledButton:
         text: "RESTART APP"
-        font_size: '12sp' # Slightly smaller to fit
-        bold: True
         disabled: not app.is_install_successful
         background_disabled_normal: ''
         background_disabled_down: ''
         background_color: (1, 0.6, 0, 1) if app.is_install_successful else (0.3, 0.3, 0.3, 1)
         on_release: app.restart_application()
 
-# --- CONFIRMATION POPUP ---
+<AboutFooter@GridLayout>:
+    cols: 5
+    size_hint_y: 0.12
+    spacing: 5
+    
+    ScaledButton:
+        text: "CANCEL/EXIT"
+        on_release: app.check_unsaved_changes()
+        
+    ScaledButton:
+        text: "HELP"
+    
+    Label:
+        text: ""
+    Label:
+        text: ""
+    Label:
+        text: ""
+
+
+# --- 5. POPUPS & TAB STYLES ---
+
 <DirtyPopup@Popup>:
     title: 'Unsaved Changes'
     size_hint: 0.8, 0.4
@@ -239,41 +298,42 @@
         padding: 10
         spacing: 10
         
-        Label:
+        Text_Medium:
             text: "You have unsaved changes.\nDo you want to save them before exiting?"
             halign: 'center'
-            font_size: '16sp'
             
         BoxLayout:
             spacing: 10
             size_hint_y: None
             height: 50
             
-            Button:
+            ScaledButton:
                 text: "DISCARD"
                 background_color: 0.8, 0.2, 0.2, 1
                 on_release: 
                     app.discard_changes()
                     root.dismiss()
 
-            Button:
+            ScaledButton:
                 text: "CANCEL"
-                bold: True
                 on_release: root.dismiss()
                     
-            Button:
+            ScaledButton:
                 text: "SAVE & EXIT"
                 background_color: 0.2, 0.8, 0.2, 1
                 on_release: 
                     app.save_and_exit()
                     root.dismiss()
 
-# --- TABBED PANEL STYLE ---
 <TabbedPanelItem>:
-    font_size: '13sp' # Reduced slightly to fit 7 tabs
+    # Medium (4%)
+    font_size: Window.height * 0.04
     bold: True
 
-# --- SCREEN 1: MAIN DASHBOARD ---
+
+# --- 6. SCREENS ---
+
+# --- DASHBOARD ---
 <DashboardScreen>:
     name: 'dashboard'
     
@@ -288,13 +348,10 @@
                 pos: self.pos
                 size: self.size
 
-        # 1. TITLE BAR (SCALABLE: 10%)
-        Label:
+        # 1. TITLE BAR (LARGE 5%)
+        Text_Large:
             text: "FermVault Lite"
             size_hint_y: 0.10
-            font_size: '22sp'
-            bold: True
-            color: app.col_theme_blue
             canvas.before:
                 Color:
                     rgba: 0.05, 0.05, 0.05, 1
@@ -302,7 +359,7 @@
                     pos: self.pos
                     size: self.size
 
-        # 2. BODY WRAPPER (SCALABLE: 70%)
+        # 2. BODY WRAPPER
         BoxLayout:
             orientation: 'vertical'
             size_hint_y: 0.70  
@@ -311,7 +368,7 @@
                 cols: 2
                 spacing: 15
                 
-                # --- LEFT COL: CONTROLS ---
+                # --- LEFT COL: CONTROLS (MEDIUM) ---
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: 16
@@ -319,127 +376,104 @@
 
                     # -- API Service --
                     ControlRow:
-                        Label:
-                            text: "API Service"
+                        Text_Medium:
+                            text: "API SERVICE"
                             text_size: self.size
                             halign: 'right'
                             valign: 'middle'
                             size_hint_x: 0.4
-                            font_size: '14sp'
-                            bold: True
                         
-                        Spinner:
+                        ScaledSpinner:
                             text: app.current_api_service
                             values: app.api_service_list
                             size_hint_x: 0.6
                             background_normal: ''
                             background_color: 0.3, 0.3, 0.3, 1
-                            font_size: '14sp'
-                            bold: True
                             on_text: app.select_api_service(self.text)
 
                     # -- Brew Session --
                     ControlRow:
-                        Label:
-                            text: "Brew Session"
+                        Text_Medium:
+                            text: "BREW SESSION"
                             text_size: self.size
                             halign: 'right'
                             valign: 'middle'
                             size_hint_x: 0.4
-                            font_size: '14sp'
-                            bold: True
                         
-                        Spinner:
+                        ScaledSpinner:
                             text: app.current_brew_session
                             values: app.brew_session_list
                             size_hint_x: 0.6
                             background_normal: ''
                             background_color: 0.3, 0.3, 0.3, 1
-                            font_size: '14sp'
-                            bold: True
                             on_text: app.select_brew_session(self.text)
 
                     # -- Control Mode --
                     ControlRow:
-                        Label:
-                            text: "Control Mode"
+                        Text_Medium:
+                            text: "CONTROL MODE"
                             text_size: self.size
                             halign: 'right'
                             valign: 'middle'
                             size_hint_x: 0.4
-                            font_size: '14sp'
-                            bold: True
                         
-                        Spinner:
+                        ScaledSpinner:
                             text: app.control_mode_display
-                            values: ["Ambient", "Beer", "Ramp", "Crash"]
+                            values: ["AMBIENT", "BEER", "RAMP", "CRASH"]
                             size_hint_x: 0.6
                             background_normal: ''
                             background_color: 0.3, 0.3, 0.3, 1
-                            font_size: '14sp'
-                            bold: True
                             on_text: app.set_control_mode(self.text)
 
                     # -- Monitoring --
                     ControlRow:
-                        Label:
-                            text: "Monitoring"
+                        Text_Medium:
+                            text: "MONITORING"
                             text_size: self.size
                             halign: 'right'
                             valign: 'middle'
                             size_hint_x: 0.4
-                            font_size: '14sp'
-                            bold: True
                         
-                        Spinner:
+                        ScaledSpinner:
                             text: app.monitoring_state
                             values: ["ON", "OFF"]
                             size_hint_x: 0.6
                             background_normal: ''
                             background_color: (0.8, 0, 0, 1) if self.text == 'OFF' else (0, 0.8, 0, 1)
-                            font_size: '14sp'
-                            bold: True
                             on_text: app.toggle_monitoring(self.text)
 
                     # -- Aux Relay Follows --
                     ControlRow:
-                        Label:
-                            text: "Aux Relay Follows"
+                        Text_Medium:
+                            text: "AUX RELAY FOLLOWS"
                             text_size: self.size
                             halign: 'right'
                             valign: 'middle'
                             size_hint_x: 0.4
-                            font_size: '14sp'
-                            bold: True
                         
-                        Spinner:
-                            text: "Monitoring"
-                            values: ["Always OFF", "Always ON", "Monitoring", "Heating", "Cooling"]
+                        ScaledSpinner:
+                            text: "MONITORING"
+                            values: ["ALWAYS OFF", "ALWAYS ON", "MONITORING", "HEATING", "COOLING"]
                             size_hint_x: 0.6
                             background_normal: ''
                             background_color: 0.3, 0.3, 0.3, 1
-                            font_size: '14sp'
-                            bold: True
+                            on_text: app.set_aux_mode(self.text)
                     
                     # -- Indicators --
                     BoxLayout:
                         spacing: 10
                         size_hint_y: 1
                         
-                        Label:
+                        Text_Medium:
                             text: "HEATING"
-                            bold: True
-                            font_size: '14sp'
                             canvas.before:
                                 Color:
                                     rgba: app.heater_color
                                 Rectangle:
                                     pos: self.pos
                                     size: self.size
-                        Label:
+                        Text_Medium:
                             text: "COOLING"
-                            bold: True
-                            font_size: '14sp'
                             canvas.before:
                                 Color:
                                     rgba: app.cooler_color
@@ -489,7 +523,7 @@
                                 height: 20
 
                             HeroTargetLabel:
-                                text: "Target: " + app.beer_target
+                                text: "TARGET: " + app.beer_target
 
                             Widget:
                                 size_hint_y: None
@@ -518,55 +552,47 @@
                                 height: 20
 
                             HeroTargetLabel:
-                                text: "Target: " + app.ambient_target
-                                color: 0.7, 0.7, 0.7, 1
+                                text: "TARGET: " + app.ambient_target
                             
-                            Label:
-                                text: "Range: " + app.ambient_range
-                                font_size: '14sp'
-                                bold: True
+                            # RANGE (SMALL 3%)
+                            Text_Small:
+                                text: "RANGE: " + app.ambient_range
                                 color: 0.6, 0.6, 0.6, 1
                                 size_hint_y: None
                                 height: 20
 
                     # --- GRAVITY / STATUS (Bottom Strip) ---
+                    # GRAVITY BUTTONS (SMALL 3%)
                     GridLayout:
                         size_hint_y: 0.40
                         cols: 3
                         spacing: 5
                         padding: [0, 5, 0, 5]
                         
-                        Button:
+                        ScaledSmallButton:
                             text: app.og_full_text
                             on_press: app.refresh_api_data()
                             halign: 'center'
-                            font_size: '14sp'
-                            bold: True
                         
-                        Button:
+                        ScaledSmallButton:
                             text: app.sg_full_text
                             on_press: app.refresh_api_data()
                             halign: 'center'
-                            font_size: '14sp'
-                            bold: True
                         
-                        Button:
+                        ScaledSmallButton:
                             text: app.fg_full_text
                             on_press: app.run_fg_calculator()
                             halign: 'center'
-                            font_size: '14sp'
-                            bold: True
+                            color: app.fg_text_color
 
-        # 3. WARNING MESSAGE (SCALABLE: 8% IF ACTIVE)
+        # 3. WARNING MESSAGE (MEDIUM 4%)
         BoxLayout:
             size_hint_y: 0.08 if app.warning_message else 0
             opacity: 1 if app.warning_message else 0
             padding: [0, 5, 0, 5]
             
-            Label:
+            Text_Medium:
                 text: app.warning_message
-                font_size: '16sp'
-                bold: True
                 color: 1, 1, 1, 1
                 canvas.before:
                     Color:
@@ -575,31 +601,23 @@
                         pos: self.pos
                         size: self.size
 
-        # 4. FOOTER NAVIGATION (SCALABLE: 12%)
+        # 4. FOOTER NAVIGATION (MEDIUM 4%)
         BoxLayout:
             size_hint_y: 0.12
             spacing: 5
             
-            Button:
+            ScaledButton:
                 text: "SYSTEM LOG"
-                font_size: '14sp'
-                bold: True
                 on_release: app.go_to_screen('log', 'left')
 
-            Button:
+            ScaledButton:
                 text: "SETTINGS"
-                font_size: '14sp'
-                bold: True
                 on_release: app.go_to_screen('settings', 'left')
 
-            # APP INFO Button Removed - Now in Settings
-
-            Button:
+            ScaledButton:
                 text: "HELP"
-                font_size: '14sp'
-                bold: True
 
-# --- SCREEN 2: SYSTEM LOG ---
+# --- SYSTEM LOG ---
 <LogScreen>:
     on_enter: app._refresh_all_settings_from_manager()
 
@@ -608,64 +626,67 @@
         padding: 5
         spacing: 5
         
-        # 1. HEADER & CSV SWITCH
+        # 1. HEADER (SCALABLE: 8.5%)
         BoxLayout:
             size_hint_y: None
-            height: 40
+            height: Window.height * 0.085
             spacing: 10
             
-            Label:
+            Text_Large:
                 text: "SYSTEM LOG"
                 size_hint_x: 0.4
-                font_size: '18sp'
-                bold: True
                 halign: 'left'
                 text_size: self.size
                 valign: 'middle'
 
-            # CSV Checkbox Area
+            # CSV Checkbox Area with Background Color
             BoxLayout:
                 size_hint_x: 0.6
                 spacing: 5
+                padding: [5, 2]
+                canvas.before:
+                    Color:
+                        rgba: 0.4, 0.4, 0.4, 1  # Light Gray Background for visibility
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+                
                 CheckBox:
                     active: app.pid_logging_enabled
                     size_hint_x: None
                     width: 40
                     on_active: app.stage_setting_change("pid_logging_enabled", self.active)
                 
-                Label:
+                # CHECKBOX LABEL (SMALL 3%)
+                Text_Small:
                     text: "Log to CSV in data dir"
-                    font_size: '12sp'
                     halign: 'left'
                     valign: 'middle'
                     text_size: self.size
+                    color: 1, 1, 1, 1 # Ensure text is white against gray
             
-        # 2. LOG DISPLAY
-        TextInput:
+        # 2. LOG DISPLAY (SMALL 3%)
+        # Note: Using ScaledTextInput style but overriding font_size
+        ScaledTextInput:
             text: app.log_text
+            font_size: Window.height * 0.03
             readonly: True
-            font_size: '14sp'
-            bold: False
+            bold: True
             background_color: 0.1, 0.1, 0.1, 1
             foreground_color: 0.8, 0.8, 0.8, 1
         
-        # 3. FOOTER (5-Column)
+        # 3. FOOTER (SCALABLE: 12%)
         GridLayout:
             cols: 5
-            size_hint_y: None
-            height: 50
+            size_hint_y: 0.12
             spacing: 5
             
-            Button:
+            ScaledButton:
                 text: "CANCEL/EXIT"
-                font_size: '14sp'
-                bold: True
                 on_release: app.check_unsaved_changes()
                 
-            Button:
+            ScaledButton:
                 text: "HELP"
-                font_size: '14sp'
-                bold: True
             
             Label:
                 text: ""
@@ -673,19 +694,14 @@
             Label:
                 text: ""
                 
-            Button:
+            ScaledButton:
                 text: "SAVE"
-                font_size: '14sp'
-                bold: True
                 background_color: 0.2, 0.8, 0.2, 1
                 on_release: app.save_and_exit()
 
-# --- SCREEN 3: SETTINGS (TABBED) ---
+# --- SETTINGS SCREEN ---
 <SettingsScreen>:
-    # 1. NEW: Reset to Targets tab before screen appears
     on_pre_enter: settings_tabs.switch_to(targets_tab)
-    
-    # Existing scan on enter
     on_enter: app.scan_sensors()
 
     BoxLayout:
@@ -694,20 +710,21 @@
         spacing: 5
         
         TabbedPanel:
-            id: settings_tabs  # <--- ID ADDED
+            id: settings_tabs
             do_default_tab: False
             tab_width: self.width / 7
+            # DYNAMIC TAB HEIGHT: ~40px on 480p, scales up
+            tab_height: Window.height * 0.085
             
             # --- TAB 1: TARGETS ---
             TabbedPanelItem:
-                id: targets_tab  # <--- ID ADDED
+                id: targets_tab
                 text: 'TARGETS'
                 
                 BoxLayout:
                     orientation: 'vertical'
                     padding: [0, 5, 0, 0]
                     
-                    # CONTENT
                     BoxLayout:
                         orientation: 'vertical'
                         padding: [5, 10]
@@ -757,7 +774,6 @@
                         Label:
                             size_hint_y: 1
 
-                    # FOOTER
                     StandardSettingsFooter:
 
             # --- TAB 2: SYSTEM ---
@@ -776,20 +792,19 @@
 
                         # SENSORS
                         SettingRow:
-                            height: 35
+                            # Inherits dynamic height (0.085)
                             SettingLabel:
                                 text: "Beer Sensor"
-                            Spinner:
+                            ScaledSmallSpinner:
                                 text: app.ds18b20_beer_sensor
                                 values: app.available_sensors
                                 size_hint_x: 0.6
                                 on_text: app.save_sensor_setting("beer", self.text)
 
                         SettingRow:
-                            height: 35
                             SettingLabel:
                                 text: "Ambient Sensor"
-                            Spinner:
+                            ScaledSmallSpinner:
                                 text: app.ds18b20_ambient_sensor
                                 values: app.available_sensors
                                 size_hint_x: 0.6
@@ -797,7 +812,6 @@
 
                         # RELAY LOGIC
                         SettingRow:
-                            height: 35
                             SettingLabel:
                                 text: "Relay Activation"
                             BoxLayout:
@@ -805,11 +819,16 @@
                                 spacing: 10
                                 ToggleButton:
                                     text: "Active HIGH"
+                                    # SMALL (3%)
+                                    font_size: Window.height * 0.03
+                                    bold: True
                                     group: "logic"
                                     state: 'down' if app.relay_active_high else 'normal'
                                     on_release: app.set_relay_logic(True)
                                 ToggleButton:
                                     text: "Active LOW"
+                                    font_size: Window.height * 0.03
+                                    bold: True
                                     group: "logic"
                                     state: 'normal' if app.relay_active_high else 'down'
                                     on_release: app.set_relay_logic(False)
@@ -843,7 +862,6 @@
                         Label:
                             size_hint_y: 1
 
-                    # FOOTER
                     StandardSettingsFooter:
 
             # --- TAB 3: ALERTS ---
@@ -853,11 +871,11 @@
                     orientation: 'vertical'
                     padding: [0, 5, 0, 0]
                     
-                    Label:
+                    Text_Small:
                         text: "Notification & Email Settings\n(Coming Soon)"
+                        halign: 'center'
                         size_hint_y: 1
                     
-                    # FOOTER
                     StandardSettingsFooter:
 
             # --- TAB 4: API & FG ---
@@ -931,7 +949,6 @@
                         Label:
                             size_hint_y: 1
                     
-                    # FOOTER
                     StandardSettingsFooter:
 
             # --- TAB 5: PID ---
@@ -996,7 +1013,6 @@
                         Label:
                             size_hint_y: 1
 
-                    # FOOTER
                     StandardSettingsFooter:
 
             # --- TAB 6: UPDATES ---
@@ -1014,24 +1030,25 @@
                         spacing: 10
                         size_hint_y: 1
                         
-                        Label:
+                        Text_Medium:
                             text: "Software Update Log"
                             size_hint_y: None
-                            height: 30
+                            # DYNAMIC HEADER HEIGHT (0.07 ~33px)
+                            height: Window.height * 0.07
                             halign: 'left'
                             text_size: self.size
-                            bold: True
                             color: 0.7, 0.7, 0.7, 1
 
-                        TextInput:
+                        # LOG TEXT (SMALL 3%)
+                        ScaledTextInput:
                             text: app.update_log_text
                             readonly: True
-                            font_size: '13sp'
+                            font_size: Window.height * 0.03
+                            bold: True
                             font_name: 'RobotoMono-Regular' if 'RobotoMono-Regular' in getattr(app, 'fonts', []) else 'Roboto' 
                             background_color: 0.15, 0.15, 0.15, 1
                             foreground_color: 0.9, 0.9, 0.9, 1
                     
-                    # SPECIAL UPDATES FOOTER
                     UpdatesFooter:
 
             # --- TAB 7: ABOUT ---
@@ -1042,32 +1059,9 @@
                     orientation: 'vertical'
                     padding: [0, 5, 0, 0]
                     
-                    Label:
+                    Text_Medium:
                         text: "FermVault Lite v1.0\nCreated by Keg Level Monitor\n(Coming Soon)"
                         halign: 'center'
                         size_hint_y: 1
                     
-                    # SIMPLE FOOTER
-                    GridLayout:
-                        cols: 5
-                        size_hint_y: None
-                        height: 50
-                        spacing: 5
-                        
-                        Button:
-                            text: "CANCEL/EXIT"
-                            font_size: '14sp'
-                            bold: True
-                            on_release: app.check_unsaved_changes()
-                            
-                        Button:
-                            text: "HELP"
-                            font_size: '14sp'
-                            bold: True
-                        
-                        Label:
-                            text: ""
-                        Label:
-                            text: ""
-                        Label:
-                            text: "" # No Save button here
+                    AboutFooter:
