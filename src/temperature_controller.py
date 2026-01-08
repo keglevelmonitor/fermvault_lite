@@ -41,14 +41,13 @@ class TemperatureController:
         self.relay_control = relay_control
         self.notification_manager = None
         
-        # --- MODIFICATION: Read PID values from settings ---
+        # Read PID values from settings
         kp = self.settings_manager.get("pid_kp", 2.0)
         ki = self.settings_manager.get("pid_ki", 0.03)
         kd = self.settings_manager.get("pid_kd", 20.0)
         
         self.pid = PID(Kp=kp, Ki=ki, Kd=kd, setpoint=0.0) 
         print(f"[TempController] PID initialized with Kp={kp}, Ki={ki}, Kd={kd}")
-        # --- END MODIFICATION ---
         
         self.last_pid_update_time = time.time()
         
@@ -56,30 +55,31 @@ class TemperatureController:
         self._monitor_thread = None
         self._stop_event = threading.Event()
         
-        # --- NEW: Sensor state tracking for latched logging ---
+        # Sensor state tracking
         self._beer_sensor_ok = True
         self._amb_sensor_ok = True
         self._fail_safe_logged = False
-        # --- END NEW ---
         
-        # --- MODIFICATION: Expanded ramp_state for pre-condition ---
+        # Ramp state
         self.ramp_state = {
             "current_target": 0.0, 
             "last_step_time": 0.0, 
             "start_time": 0.0, 
             "is_finished": False,
-            "is_in_pre_ramp": True,     # NEW: Flag for pre-condition state
-            "ramp_logging_done": False  # NEW: Flag to log messages only once
+            "is_in_pre_ramp": True,
+            "ramp_logging_done": False
         }
-        # --------------------------------------------------------
         
-        # --- MODIFICATION: Define the data directory for logging ---
-        self.data_dir = os.path.join(os.path.expanduser('~'), 'fermvault-data')
-        # --- END MODIFICATION ---
+        # --- CRITICAL FIX: Use the SAME directory as SettingsManager ---
+        if hasattr(self.settings_manager, 'data_dir'):
+            self.data_dir = self.settings_manager.data_dir
+        else:
+            # Fallback only if attribute is missing
+            self.data_dir = os.path.join(os.path.expanduser('~'), 'fermvault_lite-data')
+        # ----------------------------------------------------------------
 
-    # --- MODIFICATION: Added _log_pid_data function ---
     def _log_pid_data(self, setpoint, measured_temp, pid_output, amb_min, amb_max):
-        """Logs PID tuning data to a CSV file if enabled in settings."""
+        """Logs temperature data to a CSV file if enabled in settings."""
         
         # Guard clause: Check if logging is enabled
         if not self.settings_manager.get("pid_logging_enabled", False):
@@ -89,8 +89,8 @@ class TemperatureController:
             # 1. Ensure data directory exists
             os.makedirs(self.data_dir, exist_ok=True)
             
-            # 2. Define the log file path
-            log_file_path = os.path.join(self.data_dir, "pid_tuning_log.csv")
+            # 2. Define the log file path (MATCHING UI LABEL)
+            log_file_path = os.path.join(self.data_dir, "pid_log.csv") 
 
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             file_exists = os.path.isfile(log_file_path)
@@ -100,10 +100,9 @@ class TemperatureController:
             heat_state = "ON" if "HEATING" in self.settings_manager.get("heat_state") else "OFF"
             control_mode = self.settings_manager.get("control_mode", "Unknown")
 
-            # 3. CRITICAL: File Writing Block
+            # 3. Write Data
             with open(log_file_path, 'a', newline='') as csvfile:
-                # Use csv.DictWriter
-                fieldnames = ['Timestamp', 'ControlMode', 'BeerSetpoint', 'MeasuredBeerTemp', 'PID_Output', 'AmbientSetpoint_Min', 'AmbientSetpoint_Max', 'CoolState', 'HeatState']
+                fieldnames = ['Timestamp', 'ControlMode', 'Setpoint', 'MeasuredTemp', 'PID_Output', 'AmbientSetpoint_Min', 'AmbientSetpoint_Max', 'CoolState', 'HeatState']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
                 if not file_exists:
@@ -112,8 +111,8 @@ class TemperatureController:
                 writer.writerow({
                     'Timestamp': timestamp,
                     'ControlMode': control_mode,
-                    'BeerSetpoint': f"{setpoint:.2f}",
-                    'MeasuredBeerTemp': f"{measured_temp:.3f}",
+                    'Setpoint': f"{setpoint:.2f}",
+                    'MeasuredTemp': f"{measured_temp:.3f}",
                     'PID_Output': f"{pid_output:.4f}",
                     'AmbientSetpoint_Min': f"{amb_min:.2f}",
                     'AmbientSetpoint_Max': f"{amb_max:.2f}",
@@ -121,22 +120,32 @@ class TemperatureController:
                     'HeatState': heat_state
                 })
         
-        # 4. CRITICAL: Error Handling Block (Catches I/O errors and reports to UI)
         except (PermissionError, IOError) as e:
-            # This handles failed folder creation, file writing, or permission issues
-            log_msg = f"[CRITICAL ERROR] Failed to write PID log. Check permissions for: {self.data_dir}. Error: {e}"
+            log_msg = f"[CRITICAL ERROR] Failed to write PID log to {self.data_dir}: {e}"
             print(log_msg)
-            
-            # Log to UI on the main thread
             if self.notification_manager and self.notification_manager.ui:
                 self.notification_manager.ui.log_system_message(log_msg)
                 
         except Exception as e:
-            # Handle any other unexpected errors
             log_msg = f"[ERROR] Failed to write to PID log file: {e}"
             print(log_msg)
             if self.notification_manager and self.notification_manager.ui:
                 self.notification_manager.ui.log_system_message(log_msg)
+
+    def ambient_hold_logic(self, amb_temp):
+        """Controls Ambient Temp to the Ambient Hold Setpoint (Simple Thermostat)."""
+        target_amb_temp = self.settings_manager.get("ambient_hold_f", 37.0) 
+        DEADBAND = self.settings_manager.get("ambient_deadband", 1.0)
+        amb_min = target_amb_temp - DEADBAND
+        amb_max = target_amb_temp + DEADBAND
+        
+        # --- NEW: Log data even in Ambient Mode ---
+        # We pass target_amb_temp as Setpoint, amb_temp as Measured, and 0 for PID Output
+        if amb_temp is not None:
+            self._log_pid_data(target_amb_temp, amb_temp, 0.0, amb_min, amb_max)
+        # ------------------------------------------
+        
+        return amb_min, amb_max
                 
     # --- SENSOR READING ---
     def _read_temp_from_id(self, sensor_id):
@@ -201,14 +210,6 @@ class TemperatureController:
             "ramp_logging_done": False
         }
         # ----------------------------------------------------
-
-    def ambient_hold_logic(self, amb_temp):
-        """Controls Ambient Temp to the Ambient Hold Setpoint (Simple Thermostat)."""
-        target_amb_temp = self.settings_manager.get("ambient_hold_f", 37.0) 
-        DEADBAND = self.settings_manager.get("ambient_deadband", 1.0) # <-- MODIFIED
-        amb_min = target_amb_temp - DEADBAND
-        amb_max = target_amb_temp + DEADBAND
-        return amb_min, amb_max
 
     def beer_hold_logic(self, beer_temp, amb_temp):
         """Controls Beer Temp to the Beer Hold Setpoint (PID-Assisted)."""

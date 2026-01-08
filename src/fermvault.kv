@@ -5,7 +5,6 @@
 # --- 1. T-SHIRT SIZE TEXT STYLES ---
 # Reference Screen Height: 480px
 # All styles are BOLD.
-
 <Text_Small@Label>:
     # 3% of Height (~14px on 480p)
     font_size: Window.height * 0.03
@@ -176,6 +175,7 @@
         size_hint_x: None
         width: 10
     
+    # MINUS BUTTON
     ScaledSmallButton:
         text: "-"
         size_hint_x: None
@@ -183,8 +183,10 @@
         size_hint_y: None
         height: 35
         pos_hint: {'center_y': 0.5}
-        on_release: app.adjust_target(root.key, -root.step_val)
+        # FIX: Pass min/max limits
+        on_release: app.adjust_target(root.key, -root.step_val, root.min_val, root.max_val)
 
+    # THE SLIDER BAR
     Slider:
         size_hint_x: 0.70
         min: root.min_val
@@ -194,6 +196,7 @@
         value: float(root.value_text) if root.value_text != "--.-" else root.min_val
         on_value: app.save_target_from_slider(root.key, self.value)
 
+    # PLUS BUTTON
     ScaledSmallButton:
         text: "+"
         size_hint_x: None
@@ -201,7 +204,8 @@
         size_hint_y: None
         height: 35
         pos_hint: {'center_y': 0.5}
-        on_release: app.adjust_target(root.key, root.step_val)
+        # FIX: Pass min/max limits
+        on_release: app.adjust_target(root.key, root.step_val, root.min_val, root.max_val)
 
 
 # --- 4. REUSABLE FOOTERS (SCALABLE: 12%) ---
@@ -211,9 +215,13 @@
     size_hint_y: 0.12
     spacing: 5
     
+    # Context property
+    tab_name: 'none'
+    
     ScaledButton:
         text: "CANCEL/EXIT"
-        on_release: app.check_unsaved_changes()
+        # UPDATED: Pass tab_name for PID interception
+        on_release: app.attempt_exit_settings(root.tab_name)
         
     ScaledButton:
         text: "HELP"
@@ -223,12 +231,13 @@
     
     ScaledButton:
         text: "RESET/DEFAULTS"
-        on_release: app.reset_targets_to_defaults()
+        on_release: app.reset_targets_to_defaults(root.tab_name)
         
     ScaledButton:
         text: "SAVE"
         background_color: 0.2, 0.8, 0.2, 1
-        on_release: app.save_and_exit()
+        # UPDATED: Pass tab_name for PID interception
+        on_release: app.save_current_tab(root.tab_name)
 
 <UpdatesFooter@GridLayout>:
     cols: 5
@@ -237,7 +246,7 @@
     
     ScaledButton:
         text: "EXIT"
-        on_release: app.go_to_screen('dashboard', 'right')
+        on_release: app.attempt_exit_settings()
         
     ScaledButton:
         text: "HELP"
@@ -273,7 +282,7 @@
     
     ScaledButton:
         text: "CANCEL/EXIT"
-        on_release: app.check_unsaved_changes()
+        on_release: app.attempt_exit_settings()
         
     ScaledButton:
         text: "HELP"
@@ -308,7 +317,8 @@
             height: 50
             
             ScaledButton:
-                text: "DISCARD"
+                # RENAMED
+                text: "DISCARD & CONTINUE"
                 background_color: 0.8, 0.2, 0.2, 1
                 on_release: 
                     app.discard_changes()
@@ -319,16 +329,72 @@
                 on_release: root.dismiss()
                     
             ScaledButton:
-                text: "SAVE & EXIT"
+                text: "SAVE & CONTINUE"
                 background_color: 0.2, 0.8, 0.2, 1
                 on_release: 
-                    app.save_and_exit()
+                    app.save_and_continue()
+                    root.dismiss()
+
+<PIDWarningPopup@Popup>:
+    title: 'PID TUNING Unsaved Changes'
+    size_hint: 0.9, 0.5
+    auto_dismiss: False
+    title_size: Window.height * 0.04
+    separator_color: 0, 0, 1, 1  # Blue separator line
+    
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 10
+        spacing: 10
+        canvas.before:
+            Color:
+                rgba: 0.1, 0.1, 0.1, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        # --- WARNING CONTENT AREA ---
+        Text_Medium:
+            text: "WARNING! Changes to the PID TUNING parameters, even very small changes, may produce very large and possibly unexpected behavior in the temperature control management of the system. You must be absolutely certain you wish to make these changes."
+            text_size: self.size
+            halign: 'center'
+            valign: 'middle'
+            color: 1, 0.3, 0.3, 1 # Light Red text
+            size_hint_y: 0.7
+
+        # --- BUTTON FOOTER ---
+        BoxLayout:
+            spacing: 10
+            size_hint_y: None
+            height: Window.height * 0.12
+            
+            ScaledButton:
+                text: "DISCARD & CONTINUE"
+                background_color: 0.8, 0.2, 0.2, 1
+                # FIXED: Removed font_size override so it matches others
+                on_release: 
+                    app.discard_changes()
+                    root.dismiss()
+
+            ScaledButton:
+                text: "CANCEL"
+                on_release: root.dismiss()
+                    
+            ScaledButton:
+                # RENAMED: SAVE (Implies staying on screen)
+                text: "SAVE"
+                background_color: 0.2, 0.8, 0.2, 1
+                on_release: 
+                    # ACTION CHANGED: Save and stay (clean state)
+                    app.save_current_tab()
                     root.dismiss()
 
 <TabbedPanelItem>:
     # Medium (4%)
     font_size: Window.height * 0.04
     bold: True
+    # LOCK TABS IF DIRTY: User must Save or Cancel via Footer
+    disabled: app.is_settings_dirty
 
 
 # --- 6. SCREENS ---
@@ -452,7 +518,8 @@
                             size_hint_x: 0.4
                         
                         ScaledSpinner:
-                            text: "MONITORING"
+                            # FIX: Bind text to App property to reflect saved state
+                            text: app.aux_mode_display
                             values: ["ALWAYS OFF", "ALWAYS ON", "MONITORING", "HEATING", "COOLING"]
                             size_hint_x: 0.6
                             background_normal: ''
@@ -524,6 +591,7 @@
 
                             HeroTargetLabel:
                                 text: "TARGET: " + app.beer_target
+                                color: app.beer_target_color
 
                             Widget:
                                 size_hint_y: None
@@ -547,19 +615,24 @@
                                 text: app.ambient_actual
                                 color: app.ambient_actual_color
 
+                            # Spacer between Actual and Target
                             Widget:
                                 size_hint_y: None
                                 height: 20
 
                             HeroTargetLabel:
                                 text: "TARGET: " + app.ambient_target
-                            
-                            # RANGE (SMALL 3%)
-                            Text_Small:
-                                text: "RANGE: " + app.ambient_range
-                                color: 0.6, 0.6, 0.6, 1
+                                color: app.ambient_target_color
+                                # FIX: Constrain height to remove gap below
                                 size_hint_y: None
-                                height: 20
+                                height: 25
+                            
+                            # RANGE (Now MEDIUM 4%)
+                            Text_Medium:
+                                text: "RANGE: " + app.ambient_range
+                                color: app.range_text_color
+                                size_hint_y: None
+                                height: 25
 
                     # --- GRAVITY / STATUS (Bottom Strip) ---
                     # GRAVITY BUTTONS (SMALL 3%)
@@ -626,7 +699,7 @@
         padding: 5
         spacing: 5
         
-        # 1. HEADER (SCALABLE: 8.5%)
+        # 1. HEADER
         BoxLayout:
             size_hint_y: None
             height: Window.height * 0.085
@@ -634,39 +707,38 @@
             
             Text_Large:
                 text: "SYSTEM LOG"
-                size_hint_x: 0.4
+                size_hint_x: 0.3
                 halign: 'left'
                 text_size: self.size
                 valign: 'middle'
 
-            # CSV Checkbox Area with Background Color
+            # CSV Checkbox Area
             BoxLayout:
-                size_hint_x: 0.6
+                size_hint_x: 0.7
                 spacing: 5
                 padding: [5, 2]
                 canvas.before:
                     Color:
-                        rgba: 0.4, 0.4, 0.4, 1  # Light Gray Background for visibility
+                        rgba: 0.4, 0.4, 0.4, 1
                     Rectangle:
                         pos: self.pos
                         size: self.size
                 
                 CheckBox:
-                    active: app.pid_logging_enabled
+                    active: app.system_logging_enabled
                     size_hint_x: None
                     width: 40
-                    on_active: app.stage_setting_change("pid_logging_enabled", self.active)
-                
-                # CHECKBOX LABEL (SMALL 3%)
+                    # UPDATED: Use immediate toggle to bypass dirty check
+                    on_active: app.toggle_setting_immediate("system_logging_enabled", self.active)
+            
                 Text_Small:
-                    text: "Log to CSV in data dir"
+                    text: "Append system log to fermvault_lite-data/system_log.csv"
                     halign: 'left'
                     valign: 'middle'
                     text_size: self.size
-                    color: 1, 1, 1, 1 # Ensure text is white against gray
+                    color: 1, 1, 1, 1
             
-        # 2. LOG DISPLAY (SMALL 3%)
-        # Note: Using ScaledTextInput style but overriding font_size
+        # 2. LOG DISPLAY (Unchanged)
         ScaledTextInput:
             text: app.log_text
             font_size: Window.height * 0.03
@@ -675,7 +747,7 @@
             background_color: 0.1, 0.1, 0.1, 1
             foreground_color: 0.8, 0.8, 0.8, 1
         
-        # 3. FOOTER (SCALABLE: 12%)
+        # 3. FOOTER (UPDATED to remove save_and_exit)
         GridLayout:
             cols: 5
             size_hint_y: 0.12
@@ -683,8 +755,9 @@
             
             ScaledButton:
                 text: "CANCEL/EXIT"
-                on_release: app.check_unsaved_changes()
-                
+                # UPDATED: Use the new exit check
+                on_release: app.attempt_exit_settings()
+            
             ScaledButton:
                 text: "HELP"
             
@@ -697,7 +770,8 @@
             ScaledButton:
                 text: "SAVE"
                 background_color: 0.2, 0.8, 0.2, 1
-                on_release: app.save_and_exit()
+                # UPDATED: Use the new local save (Isolated Behavior)
+                on_release: app.save_current_tab()
 
 # --- SETTINGS SCREEN ---
 <SettingsScreen>:
@@ -775,6 +849,7 @@
                             size_hint_y: 1
 
                     StandardSettingsFooter:
+                        tab_name: 'targets'
 
             # --- TAB 2: SYSTEM ---
             TabbedPanelItem:
@@ -863,6 +938,7 @@
                             size_hint_y: 1
 
                     StandardSettingsFooter:
+                        tab_name: 'system'
 
             # --- TAB 3: ALERTS ---
             TabbedPanelItem:
@@ -877,79 +953,7 @@
                         size_hint_y: 1
                     
                     StandardSettingsFooter:
-
-            # --- TAB 4: API & FG ---
-            TabbedPanelItem:
-                text: 'API & FG'
-                
-                BoxLayout:
-                    orientation: 'vertical'
-                    padding: [0, 5, 0, 0]
-                    
-                    GridLayout:
-                        cols: 1
-                        padding: 10
-                        spacing: 2
-                        size_hint_y: 1
-
-                        SettingInputRow:
-                            label_text: "API Key"
-                            value_text: app.api_key
-                            key: "api_key"
-
-                        StepperRow:
-                            label_text: "API Call Freq (min)"
-                            key: "api_call_frequency_m"
-                            value_text: app.api_call_frequency_m
-                            min_val: 1.0
-                            max_val: 60.0
-                            step_val: 1.0
-
-                        Label:
-                            size_hint_y: None
-                            height: 10
-                            canvas:
-                                Color: 
-                                    rgba: 0.3, 0.3, 0.3, 1
-                                Line: 
-                                    points: [self.x+10, self.y+5, self.right-10, self.y+5]
-
-                        StepperRow:
-                            label_text: "FG Check Freq (hrs)"
-                            key: "fg_check_frequency_h"
-                            value_text: app.fg_check_frequency_h
-                            min_val: 12.0
-                            max_val: 48.0
-                            step_val: 6.0
-
-                        StepperRow:
-                            label_text: "SG Range Tolerance"
-                            key: "tolerance"
-                            value_text: app.tolerance
-                            min_val: 0.0001
-                            max_val: 0.0500
-                            step_val: 0.0001
-
-                        StepperRow:
-                            label_text: "SG Records Window"
-                            key: "window_size"
-                            value_text: app.window_size
-                            min_val: 100.0
-                            max_val: 1000.0
-                            step_val: 25.0
-
-                        StepperRow:
-                            label_text: "Max SG Outliers"
-                            key: "max_outliers"
-                            value_text: app.max_outliers
-                            min_val: 0.0
-                            max_val: 20.0
-                            step_val: 1.0
-
-                        Label:
-                            size_hint_y: 1
-                    
-                    StandardSettingsFooter:
+                        tab_name: 'alerts'
 
             # --- TAB 5: PID ---
             TabbedPanelItem:
@@ -965,10 +969,57 @@
                         spacing: 2
                         size_hint_y: 1
                         
-                        SettingInputRow:
-                            label_text: "Kp"
-                            value_text: app.pid_kp
-                            key: "pid_kp"
+                        # --- CUSTOM COMBINED ROW: LOGGING + KP ---
+                        BoxLayout:
+                            orientation: 'horizontal'
+                            spacing: 10
+                            size_hint_y: None
+                            height: Window.height * 0.07
+                            
+                            # LEFT: Logging Switch
+                            BoxLayout:
+                                size_hint_x: 0.6
+                                spacing: 5
+                                canvas.before:
+                                    Color:
+                                        rgba: 0.2, 0.2, 0.2, 1
+                                    Rectangle:
+                                        pos: self.pos
+                                        size: self.size
+                                
+                                CheckBox:
+                                    active: app.pid_logging_enabled
+                                    size_hint_x: None
+                                    width: 40
+                                    # UPDATED: Use immediate toggle to bypass dirty/warning check
+                                    on_active: app.toggle_setting_immediate("pid_logging_enabled", self.active)
+                                    
+                                Text_Small:
+                                    text: "Append PID log to\nfermvault_lite-data/pid_log.csv"
+                                    valign: 'middle'
+                                    halign: 'left'
+                                    # Allow wrapping for long path
+                                    text_size: self.size
+                                    color: 0.8, 0.8, 0.8, 1
+
+                            # RIGHT: Kp Input
+                            BoxLayout:
+                                size_hint_x: 0.4
+                                spacing: 5
+                                
+                                Text_Medium:
+                                    text: "Kp"
+                                    text_size: self.size
+                                    halign: 'right'
+                                    valign: 'middle'
+                                    size_hint_x: 0.4
+                                    color: 0.8, 0.8, 0.8, 1
+
+                                ScaledSmallTextInput:
+                                    text: app.pid_kp
+                                    size_hint_x: 0.6
+                                    on_text: app.stage_text_input("pid_kp", self.text)
+                        # -----------------------------------------
                             
                         SettingInputRow:
                             label_text: "Ki"
@@ -1014,6 +1065,7 @@
                             size_hint_y: 1
 
                     StandardSettingsFooter:
+                        tab_name: 'pid'
 
             # --- TAB 6: UPDATES ---
             TabbedPanelItem:

@@ -7,6 +7,9 @@ import threading
 import signal
 import atexit
 import time
+# --- NEW IMPORT ---
+import multiprocessing
+# ------------------
 from datetime import datetime
 import subprocess
 import shutil
@@ -17,8 +20,18 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
 # ---------------------------------------------
 
-# --- 0. OS ENVIRONMENT SETUP ---
-os.environ['SDL_VIDEO_X11_WMCLASS'] = "Fermentation Vault"
+# --- 0. OS ENVIRONMENT & ICON SETUP ---
+# CRITICAL: This string must match the 'Name' in your .desktop file exactly.
+os.environ['SDL_VIDEO_X11_WMCLASS'] = "FermVault Lite"
+
+from kivy.config import Config
+
+# Calculate path to icon immediately
+current_dir = os.path.dirname(os.path.abspath(__file__))
+icon_path = os.path.join(current_dir, 'assets', 'fermenter.png')
+
+# Set the icon globally for the window
+Config.set('kivy', 'window_icon', icon_path)
 
 # --- 1. KIVY CONFIGURATION ---
 from kivy.config import Config
@@ -56,34 +69,60 @@ RELAY_PINS = {
 
 # --- 3. ROBUST SHUTDOWN LOGIC ---
 def failsafe_cleanup():
-    print("\n[System] Executing Failsafe Cleanup...")
+    """
+    Executes emergency hardware cleanup.
+    Prioritizes GPIO safety over logging or graceful state saving.
+    """
+    # 1. Hardware Cleanup (Priority #1)
     try:
         app = App.get_running_app()
-        if app and hasattr(app, 'relay_control'):
-            if hasattr(app, 'temp_controller'):
-                app.temp_controller.stop_monitoring()
+        if app and hasattr(app, 'relay_control') and app.relay_control:
             app.relay_control.cleanup_gpio()
-            print("[System] GPIO cleaned up via App reference.")
+            # Try to log, but don't let it crash the cleanup
+            try: print("[System] GPIO cleaned up via App reference.")
+            except: pass
             return
-    except Exception as e:
-        print(f"[System] Warning: App reference cleanup failed: {e}")
+    except Exception:
+        pass # App reference failed, try fallback
 
+    # 2. Fallback Cleanup (New Instance)
     try:
-        if RelayControl and SettingsManager:
-            print("[System] Attempting fallback cleanup with fresh instance...")
-            sm = SettingsManager() 
-            # Force 'Configured' to skip wizard during cleanup
-            sm.set("relay_logic_configured", True) 
-            rc = RelayControl(sm, RELAY_PINS)
-            rc.cleanup_gpio()
-            print("[System] GPIO cleaned up via Fresh Instance.")
-    except Exception as e:
-        print(f"[System] Failsafe Error: {e}")
+        # Check if classes were successfully imported before trying to use them
+        if 'RelayControl' in globals() and 'SettingsManager' in globals():
+            if RelayControl and SettingsManager:
+                sm = SettingsManager() 
+                # Force 'Configured' to skip wizard during cleanup
+                sm.set("relay_logic_configured", True) 
+                rc = RelayControl(sm, RELAY_PINS)
+                rc.cleanup_gpio()
+                try: print("[System] GPIO cleaned up via Fresh Instance.")
+                except: pass
+    except Exception:
+        pass # Fallback failed, nothing else we can do
 
 def handle_signal(signum, frame):
-    print(f"\n[System] Caught Signal {signum}. Shutting down safely...")
+    """
+    Handles external kill signals (SIGHUP/SIGTERM).
+    Forces immediate hardware cleanup and process exit.
+    """
+    signal_name = "SIGHUP" if signum == getattr(signal, 'SIGHUP', 1) else "SIGTERM"
+    
+    # 1. Try to log receipt (might fail if terminal closed)
+    try:
+        print(f"\n[System] Caught Signal {signal_name} ({signum}). Shutting down safely...")
+    except: 
+        pass
+
+    # 2. Execute Cleanup
     failsafe_cleanup()
+    
+    # 3. Force Exit (Prevents Kivy/Python from hanging)
     os._exit(0)
+
+signal.signal(signal.SIGTERM, handle_signal)
+signal.signal(signal.SIGINT, handle_signal)
+if hasattr(signal, 'SIGHUP'):
+    signal.signal(signal.SIGHUP, handle_signal)
 
 signal.signal(signal.SIGTERM, handle_signal)
 signal.signal(signal.SIGINT, handle_signal)
@@ -134,13 +173,16 @@ class KivyUIManagerAdapter:
 class DashboardScreen(Screen): pass
 class LogScreen(Screen): pass
 class SettingsScreen(Screen): pass
-# class InfoScreen(Screen): pass
 class DirtyPopup(Popup): pass
+class PIDWarningPopup(Popup): pass  # <--- NEW
 
 # --- 6. MAIN APP CLASS ---
 class FermVaultApp(App):
     # --- UI Properties ---
     beer_actual = StringProperty("--.-")
+    
+    # --- Aux Relay Property ---
+    aux_mode_display = StringProperty("MONITORING")
     
     # --- DYNAMIC COLOR PROPERTIES ---
     # Default to White [1, 1, 1, 1]
@@ -161,6 +203,11 @@ class FermVaultApp(App):
     monitoring_state = StringProperty("OFF")
     log_text = StringProperty("[System] UI Initialized.\n")
     warning_message = StringProperty("")
+    
+    # --- Functional Display Colors (Target/Range) ---
+    beer_target_color = ListProperty([0.7, 0.7, 0.7, 1])
+    ambient_target_color = ListProperty([0.7, 0.7, 0.7, 1])
+    range_text_color = ListProperty([0.7, 0.7, 0.7, 1])
     
     # --- Status Bar Properties ---
     warning_bg_color = ListProperty([0.2, 0.8, 0.2, 1]) 
@@ -203,6 +250,7 @@ class FermVaultApp(App):
     ds18b20_ambient_sensor = StringProperty("unassigned")
     relay_active_high = BooleanProperty(False)
     pid_logging_enabled = BooleanProperty(False) # Renamed from log_csv_enabled
+    system_logging_enabled = BooleanProperty(False) # <--- NEW
     
     # SOURCE OF TRUTH: settings_manager.py -> control_settings
     ambient_hold_f = StringProperty("0.0")
@@ -241,15 +289,47 @@ class FermVaultApp(App):
     # --- THREADING CONTROL ---
     _standby_running = False
     _standby_thread = None
+    
+    def dismiss_splash(self, dt=None):
+        """
+        Kills the splash screen after the UI is fully rendered.
+        """
+        if hasattr(self, 'splash_queue') and self.splash_queue:
+            self.splash_queue.put("STOP")
 
     @mainthread
     def log_system_message(self, message):
+        # 1. UI Update
         timestamp = datetime.now().strftime("[%H:%M:%S]")
-        self.log_text = f"{timestamp} {message}\n" + self.log_text
-        if len(self.log_text) > 5000: self.log_text = self.log_text[:4000]
+        self.log_text += f"{timestamp} {message}\n"
+        if len(self.log_text) > 5000: self.log_text = self.log_text[-4000:]
+        
+        # 2. File Write (If Enabled)
+        if self.system_logging_enabled and hasattr(self, 'settings_manager'):
+            try:
+                # Use same data_dir as SettingsManager
+                data_dir = self.settings_manager.data_dir
+                log_path = os.path.join(data_dir, "system_log.csv")
+                
+                # Full Date+Time for CSV
+                csv_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                file_exists = os.path.isfile(log_path)
+                
+                with open(log_path, 'a', newline='', encoding='utf-8') as f:
+                    # Simple manual CSV write to avoid overhead
+                    if not file_exists:
+                        f.write("Timestamp,Action\n")
+                    
+                    # Escape quotes in message just in case
+                    clean_msg = message.replace('"', '""')
+                    f.write(f'"{csv_timestamp}","{clean_msg}"\n')
+                    
+            except Exception as e:
+                print(f"Error writing to system log: {e}")
 
     def build(self):
-        self.title = "Fermentation Vault"
+        self.title = "FermVault Lite"
         self.sm = ScreenManager()
         self.dashboard_screen = DashboardScreen(name='dashboard')
         self.log_screen = LogScreen(name='log')
@@ -328,19 +408,23 @@ class FermVaultApp(App):
             self.monitoring_state = "OFF"
             
             # --- FIX: Explicitly Reset FG Data on Startup ---
-            # This forces the UI to show dashes until the user manually clicks the FG button.
-            # It overwrites any stale data saved in the persistent settings file.
             self.settings_manager.set("fg_value_var", "-.---")
             self.settings_manager.set("fg_status_var", "")
             # ------------------------------------------------
             
             self.log_system_message("System Started. Monitoring is OFF (Safe Standby).")
             self.start_standby_loop()
+            
+            # --- NEW: Dismiss Splash Screen ---
+            Clock.schedule_once(self.dismiss_splash, 0.5)
+            # ----------------------------------
 
         except Exception as e:
             self.log_system_message(f"CRITICAL BACKEND ERROR: {e}")
             import traceback
             traceback.print_exc()
+            # Ensure splash dies even on error so we can see the app
+            self.dismiss_splash()
 
     # --- SAFE STANDBY LOGIC (THREADED) ---
     def start_standby_loop(self):
@@ -404,6 +488,10 @@ class FermVaultApp(App):
         def s(key, default, fmt=".1f"): return f"{float(self.settings_manager.get(key, default)):{fmt}}"
         def s_str(key, default): return str(self.settings_manager.get(key, default))
         
+        # --- NEW: Load Aux Relay Mode ---
+        self.aux_mode_display = self.settings_manager.get("aux_relay_mode", "MONITORING")
+        # --------------------------------
+        
         # Targets
         self.ambient_hold_f = s("ambient_hold_f", 37.0)
         self.beer_hold_f = s("beer_hold_f", 55.0)
@@ -415,11 +503,14 @@ class FermVaultApp(App):
         self.ds18b20_beer_sensor = self.settings_manager.get("ds18b20_beer_sensor", "unassigned")
         self.ds18b20_ambient_sensor = self.settings_manager.get("ds18b20_ambient_sensor", "unassigned")
         self.relay_active_high = self.settings_manager.get("relay_active_high", False)
+        
+        
+        # LOGGING (Separated)
         self.pid_logging_enabled = self.settings_manager.get("pid_logging_enabled", False)
+        self.system_logging_enabled = self.settings_manager.get("system_logging_enabled", False)
         
         # Compressor Protection (Source of Truth Keys)
         comp = self.settings_manager.get_all_compressor_protection_settings()
-        # Convert Seconds (Backend) to Minutes (UI)
         self.cooling_dwell_time_s = f"{comp.get('cooling_dwell_time_s', 180) / 60.0:.1f}"
         self.max_cool_runtime_s = f"{comp.get('max_cool_runtime_s', 7200) / 60.0:.1f}"
         self.fail_safe_shutdown_time_s = f"{comp.get('fail_safe_shutdown_time_s', 3600) / 60.0:.1f}"
@@ -437,11 +528,9 @@ class FermVaultApp(App):
         
         # API Settings
         self.api_key = self.settings_manager.get("api_key", "")
-        # Frequency: Backend Seconds -> UI Minutes
         freq_s = self.settings_manager.get("api_call_frequency_s", 1200)
         self.api_call_frequency_m = f"{freq_s / 60.0:.1f}"
         self.fg_check_frequency_h = s("fg_check_frequency_h", 24.0)
-        # High precision for tolerance
         self.tolerance = f"{float(self.settings_manager.get('tolerance', 0.005)):.4f}"
         self.window_size = s("window_size", 500.0)
         self.max_outliers = s("max_outliers", 4.0)
@@ -450,10 +539,6 @@ class FermVaultApp(App):
         self.current_api_service = self.settings_manager.get("active_api_service", "OFF")
         self.current_brew_session = self.settings_manager.get("brew_session_title", "Select Recipe...")
         
-        # ~ # If API is already active on boot, trigger a session fetch to populate the list
-        # ~ if self.current_api_service != "OFF":
-             # ~ self.select_api_service(self.current_api_service)
-
         self.is_settings_dirty = False
 
     def tick(self, dt):
@@ -476,6 +561,23 @@ class FermVaultApp(App):
         self.warning_message = "System Healthy"
         self.warning_bg_color = [0.2, 0.8, 0.2, 1] # Green
 
+    def toggle_setting_immediate(self, key, value):
+        """
+        Updates a setting immediately to the backend and UI.
+        Bypasses 'staged_changes' and 'dirty' flags.
+        Used for logging toggles to avoid excessive 'Unsaved Changes' warnings.
+        """
+        # 1. Update Backend (Source of Truth) & Save to Disk immediately
+        if hasattr(self, 'settings_manager'):
+             self.settings_manager.set(key, value)
+        
+        # 2. Update UI Property
+        if hasattr(self, key):
+             setattr(self, key, value)
+             
+        # 3. Log it
+        # self.log_system_message(f"Setting '{key}' saved immediately.")
+    
     @mainthread
     def push_data_update(self, **kwargs):
         def fmt(val):
@@ -508,17 +610,26 @@ class FermVaultApp(App):
         self.current_sensor_error = kwargs.get('sensor_error_message', "")
         self._update_warning_status()
 
-        # 2. Dynamic Hero Colors
+        # 2. Dynamic Hero Colors (ACTUALS)
         COL_WHITE = [1, 1, 1, 1]
         COL_LGRAY = [0.7, 0.7, 0.7, 1]
         COL_GREEN = [0, 0.8, 0, 1]
         COL_RED   = [0.8, 0, 0, 1]
         COL_BLUE  = self.col_theme_blue
+        
+        # New Colors for Functional Display
+        COL_AMBER = [1, 0.6, 0, 1]
 
         if self.monitoring_state == "OFF":
             self.beer_actual_color = COL_WHITE
             self.ambient_actual_color = COL_WHITE
+            
+            # FUNCTIONAL DISPLAY: ALL GRAY WHEN OFF
+            self.beer_target_color = COL_LGRAY
+            self.ambient_target_color = COL_LGRAY
+            self.range_text_color = COL_LGRAY
         else:
+            # --- 2a. Actuals Logic ---
             # Ambient Logic
             try:
                 a_act = float(kwargs.get('amb_temp'))
@@ -546,59 +657,56 @@ class FermVaultApp(App):
                 except (ValueError, TypeError):
                     self.beer_actual_color = COL_WHITE
 
+            # --- 2b. Functional Display Logic (Targets/Range) ---
+            # Range is AMBER whenever Monitoring is ON (per requirements)
+            self.range_text_color = COL_AMBER
+            
+            if "AMBIENT" in self.control_mode_display:
+                self.ambient_target_color = COL_AMBER
+                self.beer_target_color = COL_LGRAY
+            else:
+                # BEER, RAMP, CRASH modes
+                self.ambient_target_color = COL_LGRAY
+                self.beer_target_color = COL_AMBER
+
         # --- 3. UPDATE GRAVITY WIDGETS ---
-        # We fetch directly from SettingsManager to ensure we get the latest transient data
         if hasattr(self, 'settings_manager'):
-            # -- OG (With added \n for padding) --
             og_val = self.settings_manager.get("og_display_var", "-.---")
             og_time = self.settings_manager.get("og_timestamp_var", "--:--:--")
             
-            # --- FIX: Split Date and Time ---
-            # If timestamp contains a space (e.g. "2023-10-27 14:30:00"), split it
             if og_time and isinstance(og_time, str) and " " in og_time:
                  og_time = og_time.replace(" ", "\n")
-            # --------------------------------
 
             self.og_full_text = f"OG: {og_val}\n\n{og_time}"
 
-            # -- SG (With added \n for padding) --
             sg_val = self.settings_manager.get("sg_display_var", "-.---")
             sg_time = self.settings_manager.get("sg_timestamp_var", "--:--:--")
             
-            # --- FIX: Split Date and Time ---
             if sg_time and isinstance(sg_time, str) and " " in sg_time:
                  sg_time = sg_time.replace(" ", "\n")
-            # --------------------------------
             
             self.sg_full_text = f"SG: {sg_val}\n\n{sg_time}"
 
-            # -- FG (Clean Version) --
             fg_val = self.settings_manager.get("fg_value_var", "-.---")
             fg_msg = self.settings_manager.get("fg_status_var", "--")
             
-            # Default to dashes if message is missing
             if not fg_msg: fg_msg = "--"
-
-            # Check if we have a valid numeric value
             has_valid_value = (fg_val != "-.---")
 
-            # LOGIC: If no value exists yet, but we have a status message (like "Low Data"),
-            # show the status message as the main data point.
             if not has_valid_value and fg_msg not in ["--", ""]:
                 self.fg_full_text = f"FG: {fg_msg}"
             else:
-                # Standard format: Value on top, message on bottom
                 self.fg_full_text = f"FG: {fg_val}\n\n{fg_msg}"
 
-            # -- FG COLOR LOGIC --
             if fg_msg == "Stable":
-                self.fg_text_color = [0.2, 0.8, 0.2, 1] # Green
+                self.fg_text_color = [0.2, 0.8, 0.2, 1] 
             else:
-                self.fg_text_color = [1, 1, 1, 1] # White
+                self.fg_text_color = [1, 1, 1, 1]
             
     # --- OTHER METHODS ---
     def set_aux_mode(self, mode_value):
         """Called when Aux Relay Spinner is changed on Dashboard."""
+        self.aux_mode_display = mode_value # Keep UI in sync
         if hasattr(self, 'settings_manager'):
             self.settings_manager.set("aux_relay_mode", mode_value)
             self.log_system_message(f"Aux Relay Mode set to: {mode_value}")
@@ -614,16 +722,24 @@ class FermVaultApp(App):
         threading.Thread(target=_scan, daemon=True).start()
 
     def stage_setting_change(self, key, new_value):
-        # DIRECT KEY USAGE: The key IS the property name (except for formatting).
+        # DIRECT KEY USAGE: The key IS the property name.
         self.staged_changes[key] = new_value
         self.is_settings_dirty = True
         
         # Update the UI property directly using the key
         if hasattr(self, key):
-            # Special handling only for float formatting
-            if isinstance(new_value, (float, int)):
-                fmt = ".4f" if key == "pid_ki" else ".1f"
+            # 1. Handle Booleans explicitly FIRST
+            if isinstance(new_value, bool):
+                 setattr(self, key, new_value)
+                 
+            # 2. Handle Numbers (Float/Int) for formatting
+            elif isinstance(new_value, (float, int)):
+                # FIX: Add "tolerance" to high-precision formatting
+                high_precision_keys = ["pid_ki", "tolerance"]
+                fmt = ".4f" if key in high_precision_keys else ".1f"
                 setattr(self, key, f"{float(new_value):{fmt}}")
+                
+            # 3. Handle Strings/Other
             else:
                 setattr(self, key, str(new_value))
 
@@ -638,11 +754,21 @@ class FermVaultApp(App):
             self.stage_setting_change(key, val)
         except ValueError: pass
 
-    def adjust_target(self, key, delta):
+    def adjust_target(self, key, delta, min_val=None, max_val=None):
         try:
+            # Get current value (check staged first, then backend)
             current = float(self.staged_changes.get(key, self.settings_manager.get(key, 0.0)))
-            self.stage_setting_change(key, current + delta)
-        except: pass
+            new_val = current + delta
+            
+            # Enforce Limits if provided
+            if min_val is not None:
+                new_val = max(float(min_val), new_val)
+            if max_val is not None:
+                new_val = min(float(max_val), new_val)
+                
+            self.stage_setting_change(key, new_val)
+        except Exception as e:
+            print(f"Error adjusting target: {e}")
 
     def save_target_from_slider(self, key, value):
         try:
@@ -671,7 +797,13 @@ class FermVaultApp(App):
         self._refresh_all_settings_from_manager()
         self.go_to_screen('dashboard', 'right')
 
-    def save_and_exit(self):
+    # --- 7. REFACTORED SETTINGS MANAGEMENT (ISOLATED TABS) ---
+    
+    def _commit_staged_changes(self):
+        """
+        Internal helper: Commits all staged changes to the SettingsManager and Backend.
+        Does NOT handle navigation.
+        """
         if not hasattr(self, 'settings_manager'): return
         self.log_system_message("Saving Settings...")
         
@@ -725,23 +857,122 @@ class FermVaultApp(App):
             
         self.staged_changes.clear()
         self.is_settings_dirty = False
+
+    def save_and_continue(self):
+        """
+        Saves changes and exits to the Dashboard.
+        Renamed from save_and_exit to reflect 'Continue' workflow from Popup.
+        """
+        self._commit_staged_changes()
         self.go_to_screen('dashboard', 'right')
 
-    def reset_targets_to_defaults(self):
-        defaults = {
-            "ambient_hold_f": 68.0, "beer_hold_f": 68.0, "ramp_up_hold_f": 68.0, 
-            "ramp_up_duration_hours": 24.0, "fast_crash_hold_f": 34.0,
+    def save_current_tab(self, tab_name=None):
+        """
+        Saves changes. 
+        For PID tab: Intercepts to show Safety Warning.
+        For others: Saves and stays on the tab.
+        """
+        if tab_name == 'pid' and self.is_settings_dirty:
+            # PID Safety Interception
+            self.show_pid_warning()
+        else:
+            # Standard Behavior
+            self._commit_staged_changes()
+
+    def attempt_exit_settings(self, tab_name=None):
+        """
+        Called by CANCEL/EXIT footer button.
+        Checks for dirty state before allowing exit.
+        For PID tab: Intercepts to show Safety Warning if dirty.
+        """
+        if not self.is_settings_dirty:
+            self.go_to_screen('dashboard', 'right')
+            return
+
+        if tab_name == 'pid':
+            # PID Safety Interception
+            self.show_pid_warning()
+        else:
+            # Standard Dirty Popup
+            DirtyPopup().open()
+
+    def show_pid_warning(self):
+        """Triggers the specific PID Safety Popup."""
+        PIDWarningPopup().open()
+
+    def discard_changes(self):
+        """
+        Reverts changes and returns to Dashboard.
+        Called by DISCARD on Popup.
+        """
+        self._refresh_all_settings_from_manager()
+        self.go_to_screen('dashboard', 'right')
+
+    def reset_targets_to_defaults(self, tab_name=None):
+        """
+        Resets settings to default values ONLY for the specified tab context.
+        Fetches official defaults from SettingsManager (SSOT).
+        """
+        if not hasattr(self, 'settings_manager'): return
+        
+        self.log_system_message(f"Resetting defaults for: {tab_name}")
+        
+        if tab_name == 'targets':
+            # SSOT: control_settings
+            defs = self.settings_manager.get_defaults_for_category("control_settings")
+            self.stage_setting_change("ambient_hold_f", defs.get("ambient_hold_f", 68.0))
+            self.stage_setting_change("beer_hold_f", defs.get("beer_hold_f", 68.0))
+            self.stage_setting_change("ramp_up_hold_f", defs.get("ramp_up_hold_f", 68.0))
+            self.stage_setting_change("ramp_up_duration_hours", defs.get("ramp_up_duration_hours", 30.0))
+            self.stage_setting_change("fast_crash_hold_f", defs.get("fast_crash_hold_f", 34.0))
+
+        elif tab_name == 'system':
+            # SSOT: compressor_protection_settings (Converted to Minutes for UI)
+            comp_defs = self.settings_manager.get_defaults_for_category("compressor_protection_settings")
+            self.stage_setting_change("cooling_dwell_time_s", comp_defs.get("cooling_dwell_time_s", 180) / 60.0)
+            self.stage_setting_change("max_cool_runtime_s", comp_defs.get("max_cool_runtime_s", 7200) / 60.0)
+            self.stage_setting_change("fail_safe_shutdown_time_s", comp_defs.get("fail_safe_shutdown_time_s", 3600) / 60.0)
             
-            # TRUE COMPRESSOR KEYS
-            "cooling_dwell_time_s": 3.0,
-            "max_cool_runtime_s": 120.0,
-            "fail_safe_shutdown_time_s": 60.0,
+            # SSOT: system_settings (Relay Logic)
+            sys_defs = self.settings_manager.get_defaults_for_category("system_settings")
+            # Default is False (Active Low)
+            default_active_high = sys_defs.get("relay_active_high", False)
+            self.stage_setting_change("relay_active_high", default_active_high)
+
+        elif tab_name == 'api':
+            # SSOT: api_settings
+            api_defs = self.settings_manager.get_defaults_for_category("api_settings")
             
-            "pid_kp": 2.0, "pid_ki": 0.03, "pid_kd": 20.0,
-            "ambient_mode_deadband_f": 1.0, "pid_envelope_f": 1.0, "crash_mode_envelope_f": 2.0,
-            "ramp_pre_ramp_tolerance_f": 0.2, "ramp_thermostatic_deadband_f": 0.1, "ramp_pid_landing_zone_f": 0.5
-        }
-        for key, val in defaults.items(): self.stage_setting_change(key, val)
+            # Convert Seconds -> Minutes
+            freq_s = api_defs.get("api_call_frequency_s", 1200)
+            self.stage_setting_change("api_call_frequency_m", freq_s / 60.0)
+            
+            self.stage_setting_change("fg_check_frequency_h", api_defs.get("fg_check_frequency_h", 24))
+            self.stage_setting_change("tolerance", api_defs.get("tolerance", 0.0005))
+            self.stage_setting_change("window_size", api_defs.get("window_size", 450))
+            self.stage_setting_change("max_outliers", api_defs.get("max_outliers", 4))
+
+        elif tab_name == 'pid':
+            # SSOT: system_settings (PID params are stored here)
+            sys_defs = self.settings_manager.get_defaults_for_category("system_settings")
+            
+            self.stage_setting_change("pid_kp", sys_defs.get("pid_kp", 2.0))
+            self.stage_setting_change("pid_ki", sys_defs.get("pid_ki", 0.03))
+            self.stage_setting_change("pid_kd", sys_defs.get("pid_kd", 20.0))
+            
+            # Reset PID Logging default too
+            self.stage_setting_change("pid_logging_enabled", sys_defs.get("pid_logging_enabled", False))
+            
+            self.stage_setting_change("ambient_mode_deadband_f", sys_defs.get("ambient_deadband", 1.0))
+            self.stage_setting_change("pid_envelope_f", sys_defs.get("beer_pid_envelope_width", 1.0))
+            self.stage_setting_change("crash_mode_envelope_f", sys_defs.get("crash_pid_envelope_width", 2.0))
+            
+            self.stage_setting_change("ramp_pre_ramp_tolerance_f", sys_defs.get("ramp_pre_ramp_tolerance", 0.2))
+            self.stage_setting_change("ramp_thermostatic_deadband_f", sys_defs.get("ramp_thermo_deadband", 0.1))
+            self.stage_setting_change("ramp_pid_landing_zone_f", sys_defs.get("ramp_pid_landing_zone", 0.5))
+
+        else:
+            self.log_system_message(f"No defaults logic defined for tab: {tab_name}")
 
     def set_control_mode(self, display_mode):
         if not hasattr(self, 'settings_manager'): return
@@ -768,8 +999,41 @@ class FermVaultApp(App):
         self.sm.current = screen_name
 
     def on_stop(self):
-        print("[App] on_stop called. FORCING EXIT.")
-        failsafe_cleanup()
+        """
+        Called by Kivy when the window is closed (Controlled Shutdown).
+        Mirrors 'shutdown_application' from the legacy Tkinter app.
+        """
+        print("[App] Controlled shutdown initiated (on_stop)...")
+        
+        try:
+            # 1. Stop Notification Scheduler
+            if self.notification_manager:
+                self.notification_manager.stop_scheduler()
+
+            # 2. Stop Monitoring Thread (Logic)
+            if self.temp_controller:
+                self.temp_controller.stop_monitoring()
+            
+            # 3. Stop Standby Thread
+            self.stop_standby_loop()
+
+            # 4. Hardware Safety (Relays OFF)
+            if self.relay_control:
+                self.relay_control.turn_off_all_relays()
+
+            # 5. Flag as Controlled Shutdown
+            if hasattr(self, 'settings_manager') and self.settings_manager:
+                self.settings_manager.set_controlled_shutdown(True)
+                
+            print("[App] Application closed gracefully.")
+
+        except Exception as e:
+            print(f"[App] Error during controlled shutdown: {e}")
+            # Fallback to hard cleanup if graceful steps fail
+            failsafe_cleanup()
+
+        # Final Safety: Ensure process dies (Kivy sometimes hangs on thread join)
+        time.sleep(0.5)
         os._exit(0)
         
     def check_for_updates(self):
@@ -956,5 +1220,74 @@ class FermVaultApp(App):
                 threading.Thread(target=self.notification_manager.fetch_api_data_now, args=(sid,), daemon=True).start()
 
 
+def run_splash_screen(queue):
+    """
+    Runs a standalone Tkinter loading dialog in a separate process.
+    This appears immediately, independent of Kivy's loading time.
+    """
+    import tkinter as tk
+    
+    try:
+        root = tk.Tk()
+        # Remove window decorations (frameless)
+        root.overrideredirect(True)
+        # Keep on top of the launching Kivy window
+        root.attributes('-topmost', True)
+        
+        # Calculate center position
+        width = 320
+        height = 80
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        
+        root.geometry(f'{width}x{height}+{x}+{y}')
+        root.configure(bg='#222222')
+        
+        # Add a simple styled frame
+        frame = tk.Frame(root, bg='#222222', highlightbackground='#33CCFF', highlightthickness=2)
+        frame.pack(fill='both', expand=True)
+        
+        # Add Text
+        # Using Blue/Cyan (#33CCFF) to match FermVault Theme
+        lbl = tk.Label(frame, text="FermVault Lite App Loading...", font=("Arial", 16, "bold"), fg="#33CCFF", bg="#222222")
+        lbl.pack(expand=True)
+        
+        # Force a draw immediately
+        root.update()
+        
+        # Check for kill signal every 100ms
+        def check_kill():
+            if not queue.empty():
+                root.destroy()
+            else:
+                root.after(100, check_kill)
+                
+        root.after(100, check_kill)
+        root.mainloop()
+    except Exception as e:
+        print(f"Splash screen error: {e}")
+
 if __name__ == '__main__':
-    FermVaultApp().run()
+    # 1. Start the Splash Screen immediately in a separate process
+    # We use multiprocessing so it doesn't block the main thread imports
+    splash_queue = multiprocessing.Queue()
+    splash_process = multiprocessing.Process(target=run_splash_screen, args=(splash_queue,))
+    splash_process.start()
+    
+    try:
+        # 2. Initialize and Run the App
+        app = FermVaultApp()
+        # Pass the queue so the App can kill the splash when ready
+        app.splash_queue = splash_queue 
+        app.run()
+        
+    except KeyboardInterrupt:
+        failsafe_cleanup()
+        print("\nFermVault App interrupted by user.")
+        
+    finally:
+        # Ensure splash process is definitely dead on exit
+        if splash_process.is_alive():
+            splash_process.terminate()

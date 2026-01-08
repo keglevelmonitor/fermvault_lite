@@ -20,7 +20,7 @@ SETTINGS_FILE = "fermvault_settings.json"
 
 # --- CONTROL MODE DEFAULTS ---
 DEFAULT_CONTROL_MODE = "Beer Hold"
-DEFAULT_AMBIENT_HOLD_F = 37.0
+DEFAULT_AMBIENT_HOLD_F = 68.0
 DEFAULT_BEER_HOLD_F = 55.0
 DEFAULT_RAMP_UP_HOLD_F = 68.0
 DEFAULT_RAMP_UP_DURATION_HOURS = 30.0
@@ -71,24 +71,20 @@ class SettingsManager:
             "active_api_service": "OFF",
             "current_brew_session_id": None,
             
-            # --- MODIFICATION START: Use the correct Recipe defaults ---
             "brew_sessions_list": [
                 "Recipe 1", "Recipe 2", "Recipe 3", "Recipe 4", "Recipe 5",
                 "Recipe 6", "Recipe 7", "Recipe 8", "Recipe 9", "Recipe 10",
             ],
-            # --- MODIFICATION END ---
             
-            # --- MODIFICATION: Added new setting for PID logging ---
-            "pid_logging_enabled": False,
-            # --- END MODIFICATION ---
+            # --- MODIFICATION: Separated Logging Keys ---
+            "pid_logging_enabled": False,       # High-freq PID data
+            "system_logging_enabled": False,    # Audit/Action text log
+            # --------------------------------------------
             
-            # --- MODIFICATION: Added PID parameters ---
             "pid_kp": 2.0,
             "pid_ki": 0.03,
             "pid_kd": 20.0,
-            # --- END MODIFICATION ---
 
-            # --- NEW: Added Expert Tuning Parameters ---
             "pid_idle_zone": 0.5,
             "ambient_deadband": 1.0,
             "beer_pid_envelope_width": 1.0,
@@ -96,14 +92,11 @@ class SettingsManager:
             "ramp_thermo_deadband": 0.1,
             "ramp_pid_landing_zone": 0.5,
             "crash_pid_envelope_width": 2.0,
-            # --- END NEW ---
             
-            # --- NEW: Added for EULA/Support Popup ---
             "show_eula_on_launch": True,
             "eula_agreed": False, 
-            # --- END NEW ---
             
-            # --- FIX: ALL TRANSIENT KEYS MUST BE DEFINED ---
+            # Transient Keys
             "beer_temp_actual": "--.-",
             "amb_temp_actual": "--.-",
             "beer_temp_timestamp": "--:--:--",
@@ -119,29 +112,20 @@ class SettingsManager:
             "heat_state": "Heating OFF",
             "cool_state": "Cooling OFF",
             
-            # --- NEW KEY: Define the restriction status key ---
             "cool_restriction_status": "",
-            # --- END NEW KEY ---
-            
-            # --- NEW KEY: For sensor errors ---
             "sensor_error_message": "",
-            # --- END NEW KEY ---
             
-            "cooling_delay_message": "init", # Key for logging
+            "cooling_delay_message": "init", 
             "monitoring_state": "OFF",
             
             "og_display_var": "-.---",
             "sg_display_var": "-.---",
             
-            # --- MODIFICATION: Renamed/Added FG variables ---
-            "fg_status_var": "", # This is now the MESSAGE (e.g., "", "Stable")
-            "fg_value_var": "-.---",    # This is now the VALUE (e.g., "-.---", "1.010")
-            # --- END MODIFICATION ---
+            "fg_status_var": "", 
+            "fg_value_var": "-.---",
             
-            # --- NEW: Replaced fan_control_mode with aux_relay_mode ---
             "aux_relay_mode": "Monitoring",
-            "fan_state": "Fan OFF", # Transient key for UI display
-            # --- END NEW ---
+            "fan_state": "Fan OFF", 
         }
             
     def _get_default_compressor_protection_settings(self):
@@ -318,6 +302,24 @@ class SettingsManager:
             print(f"[ERROR] Failed to save settings to {self.settings_file}: {e}")
 
     # ... (rest of the file is unchanged and correct) ...
+    
+    def get_defaults_for_category(self, category_key):
+        """
+        Returns the dictionary of DEFAULT values for a specific category.
+        Used by the UI to populate 'Reset to Defaults' actions without hardcoding values.
+        """
+        defaults_map = {
+            "control_settings": self._get_default_control_settings,
+            "system_settings": self._get_default_system_settings,
+            "api_settings": self._get_default_api_settings,
+            "compressor_protection_settings": self._get_default_compressor_protection_settings,
+            "notification_settings": self._get_default_notification_settings
+        }
+        
+        if category_key in defaults_map:
+            # Execute the method to get a fresh default dict
+            return defaults_map[category_key]()
+        return {}
     
     def save_brew_sessions(self, sessions_list):
         """Saves the brew session list directly to the main settings file."""
