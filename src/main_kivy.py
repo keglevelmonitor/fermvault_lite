@@ -124,9 +124,6 @@ signal.signal(signal.SIGINT, handle_signal)
 if hasattr(signal, 'SIGHUP'):
     signal.signal(signal.SIGHUP, handle_signal)
 
-signal.signal(signal.SIGTERM, handle_signal)
-signal.signal(signal.SIGINT, handle_signal)
-
 # --- 4. COMPATIBILITY CLASSES ---
 class TkinterRootShim:
     def after(self, delay_ms, callback, *args):
@@ -274,6 +271,36 @@ class FermVaultApp(App):
     ramp_pre_ramp_tolerance_f = StringProperty("0.0")
     ramp_thermostatic_deadband_f = StringProperty("0.0")
     ramp_pid_landing_zone_f = StringProperty("0.0")
+    
+    # --- NEW: NOTIFICATION / ALERTS PROPERTIES ---
+    notif_frequency_hours = StringProperty("0.0")
+    smtp_recipient = StringProperty("")
+    smtp_sender = StringProperty("")
+    smtp_password = StringProperty("")
+    smtp_server = StringProperty("")
+    smtp_port = StringProperty("587")
+    
+    conditional_enabled = BooleanProperty(False)
+    cond_amb_min = StringProperty("32.0")
+    cond_amb_max = StringProperty("85.0")
+    cond_beer_min = StringProperty("32.0")
+    cond_beer_max = StringProperty("75.0")
+    # ---------------------------------------------
+    
+    # --- NEW: Temperature Units Property ---
+    temp_units = StringProperty("F")
+    
+    # Keys that represent Absolute Temperatures (Convert: (F-32)*5/9)
+    TEMP_KEYS_ABS = [
+        "ambient_hold_f", "beer_hold_f", "ramp_up_hold_f", "fast_crash_hold_f",
+        "cond_amb_min", "cond_amb_max", "cond_beer_min", "cond_beer_max"
+    ]
+    
+    # Keys that represent Temperature Deltas/Ranges (Convert: F * 5/9)
+    TEMP_KEYS_DELTA = [
+        "ambient_mode_deadband_f", "pid_envelope_f", "crash_mode_envelope_f",
+        "ramp_pre_ramp_tolerance_f", "ramp_thermostatic_deadband_f", "ramp_pid_landing_zone_f"
+    ]
     
     # --- Dirty Tracking ---
     is_settings_dirty = BooleanProperty(False)
@@ -480,30 +507,76 @@ class FermVaultApp(App):
         state_str = "ON" if is_active else "OFF"
         self.toggle_monitoring(state_str)
 
-    # --- SETTINGS REFRESH (Source of Truth) ---
+    def set_temp_units(self, unit_str):
+        """
+        Sets the global temperature unit (F/C) and triggers a full refresh.
+        This is an immediate action to ensure display consistency.
+        """
+        if unit_str not in ["F", "C"]: return
+        
+        self.log_system_message(f"Changing temperature units to {unit_str}...")
+        
+        # 1. Update Backend Immediately
+        if hasattr(self, 'settings_manager'):
+            self.settings_manager.set("temp_units", unit_str)
+            
+        # 2. Update UI Property
+        self.temp_units = unit_str
+        
+        # 3. Force Refresh of all displayed values (triggers conversion)
+        self._refresh_all_settings_from_manager()
+        
+        # 4. Force Logic Update (Optional, just to be safe)
+        if hasattr(self, 'temp_controller') and self.temp_controller:
+             self.temp_controller.update_control_logic_and_ui_data()
+
     def _refresh_all_settings_from_manager(self):
         if not hasattr(self, 'settings_manager'): return
         self.staged_changes.clear()
         
-        def s(key, default, fmt=".1f"): return f"{float(self.settings_manager.get(key, default)):{fmt}}"
+        # --- UNIT CONVERSION HELPERS ---
+        self.temp_units = self.settings_manager.get("temp_units", "F")
+        is_c = (self.temp_units == "C")
+        
+        def to_ui_abs(val_f):
+            """Convert Absolute Temp F -> UI (F or C)"""
+            if not is_c: return float(val_f)
+            return (float(val_f) - 32.0) * 5.0 / 9.0
+
+        def to_ui_delta(val_f):
+            """Convert Delta Temp F -> UI (F or C)"""
+            if not is_c: return float(val_f)
+            return float(val_f) * 5.0 / 9.0
+
+        def s(key, default, fmt=".1f", conv_type=None):
+            val = float(self.settings_manager.get(key, default))
+            
+            if conv_type == 'abs':
+                val = to_ui_abs(val)
+            elif conv_type == 'delta':
+                val = to_ui_delta(val)
+                
+            return f"{val:{fmt}}"
+            
         def s_str(key, default): return str(self.settings_manager.get(key, default))
         
         # --- NEW: Load Aux Relay Mode ---
         self.aux_mode_display = self.settings_manager.get("aux_relay_mode", "MONITORING")
         # --------------------------------
         
-        # Targets
-        self.ambient_hold_f = s("ambient_hold_f", 37.0)
-        self.beer_hold_f = s("beer_hold_f", 55.0)
-        self.ramp_up_hold_f = s("ramp_up_hold_f", 68.0)
-        self.fast_crash_hold_f = s("fast_crash_hold_f", 34.0)
+        # Targets (ABSOLUTE TEMPS)
+        self.ambient_hold_f = s("ambient_hold_f", 68.0, conv_type='abs')
+        self.beer_hold_f = s("beer_hold_f", 55.0, conv_type='abs')
+        self.ramp_up_hold_f = s("ramp_up_hold_f", 68.0, conv_type='abs')
+        self.fast_crash_hold_f = s("fast_crash_hold_f", 34.0, conv_type='abs')
+        
+        # Duration is time, no conversion
         self.ramp_up_duration_hours = s("ramp_up_duration_hours", 30.0)
         
         # System
         self.ds18b20_beer_sensor = self.settings_manager.get("ds18b20_beer_sensor", "unassigned")
         self.ds18b20_ambient_sensor = self.settings_manager.get("ds18b20_ambient_sensor", "unassigned")
         self.relay_active_high = self.settings_manager.get("relay_active_high", False)
-        
         
         # LOGGING (Separated)
         self.pid_logging_enabled = self.settings_manager.get("pid_logging_enabled", False)
@@ -515,16 +588,18 @@ class FermVaultApp(App):
         self.max_cool_runtime_s = f"{comp.get('max_cool_runtime_s', 7200) / 60.0:.1f}"
         self.fail_safe_shutdown_time_s = f"{comp.get('fail_safe_shutdown_time_s', 3600) / 60.0:.1f}"
 
-        # PID & Tuning
-        self.pid_kp = s("pid_kp", 2.0)
+        # PID & Tuning (DELTAS vs RAW)
+        self.pid_kp = s("pid_kp", 2.0) # Kp unit is 1/Temp, effectively a delta related term but usually kept raw or treated as delta. For now keeping raw as tuning is complex.
         self.pid_ki = s("pid_ki", 0.03, ".4f")
         self.pid_kd = s("pid_kd", 20.0)
-        self.ambient_mode_deadband_f = s("ambient_mode_deadband_f", 1.0)
-        self.pid_envelope_f = s("pid_envelope_f", 1.0)
-        self.crash_mode_envelope_f = s("crash_mode_envelope_f", 2.0)
-        self.ramp_pre_ramp_tolerance_f = s("ramp_pre_ramp_tolerance_f", 0.2)
-        self.ramp_thermostatic_deadband_f = s("ramp_thermostatic_deadband_f", 0.1)
-        self.ramp_pid_landing_zone_f = s("ramp_pid_landing_zone_f", 0.5)
+        
+        # Deadbands are DELTAS
+        self.ambient_mode_deadband_f = s("ambient_deadband", 1.0, conv_type='delta') # Note: Key mapping 'ambient_deadband'
+        self.pid_envelope_f = s("beer_pid_envelope_width", 1.0, conv_type='delta')   # Note: Key mapping
+        self.crash_mode_envelope_f = s("crash_pid_envelope_width", 2.0, conv_type='delta')
+        self.ramp_pre_ramp_tolerance_f = s("ramp_pre_ramp_tolerance", 0.2, conv_type='delta')
+        self.ramp_thermostatic_deadband_f = s("ramp_thermo_deadband", 0.1, conv_type='delta')
+        self.ramp_pid_landing_zone_f = s("ramp_pid_landing_zone", 0.5, conv_type='delta')
         
         # API Settings
         self.api_key = self.settings_manager.get("api_key", "")
@@ -534,6 +609,26 @@ class FermVaultApp(App):
         self.tolerance = f"{float(self.settings_manager.get('tolerance', 0.005)):.4f}"
         self.window_size = s("window_size", 500.0)
         self.max_outliers = s("max_outliers", 4.0)
+        
+        # --- NOTIFICATION / ALERTS REFRESH ---
+        smtp = self.settings_manager.get_all_smtp_settings()
+        notif = self.settings_manager.settings.get('notification_settings', {})
+        
+        self.notif_frequency_hours = s("frequency_hours", 0.0)
+        self.smtp_recipient = smtp.get("email_recipient", "")
+        self.smtp_sender = smtp.get("server_email", "")
+        self.smtp_password = smtp.get("server_password", "")
+        self.smtp_server = smtp.get("smtp_server", "")
+        self.smtp_port = str(smtp.get("smtp_port", 587))
+        
+        self.conditional_enabled = notif.get("conditional_enabled", False)
+        
+        # Conditional Limits are ABSOLUTE
+        self.cond_amb_min = s("conditional_amb_min", 32.0, conv_type='abs')
+        self.cond_amb_max = s("conditional_amb_max", 85.0, conv_type='abs')
+        self.cond_beer_min = s("conditional_beer_min", 32.0, conv_type='abs')
+        self.cond_beer_max = s("conditional_beer_max", 75.0, conv_type='abs')
+        # -------------------------------------
 
         # Sync Dashboard State
         self.current_api_service = self.settings_manager.get("active_api_service", "OFF")
@@ -583,15 +678,32 @@ class FermVaultApp(App):
         def fmt(val):
             try: return f"{float(val):.1f}"
             except (ValueError, TypeError): return "--.-"
+            
+        # --- UNIT CONVERSION LOGIC ---
+        is_c = (self.temp_units == "C")
+        
+        def convert_val(val):
+            if val is None: return None
+            try:
+                v = float(val)
+                if is_c: return (v - 32.0) * 5.0 / 9.0
+                return v
+            except: return None
 
         # 1. Update Text Values
-        self.beer_actual = fmt(kwargs.get('beer_temp'))
-        self.beer_target = fmt(kwargs.get('beer_setpoint'))
-        self.ambient_actual = fmt(kwargs.get('amb_temp'))
-        self.ambient_target = fmt(kwargs.get('amb_target'))
+        b_act = convert_val(kwargs.get('beer_temp'))
+        b_tgt = convert_val(kwargs.get('beer_setpoint'))
+        a_act = convert_val(kwargs.get('amb_temp'))
+        a_tgt = convert_val(kwargs.get('amb_target'))
         
-        amin = kwargs.get('amb_min')
-        amax = kwargs.get('amb_max')
+        self.beer_actual = fmt(b_act) if b_act is not None else "--.-"
+        self.beer_target = fmt(b_tgt) if b_tgt is not None else "--.-"
+        self.ambient_actual = fmt(a_act) if a_act is not None else "--.-"
+        self.ambient_target = fmt(a_tgt) if a_tgt is not None else "--.-"
+        
+        amin = convert_val(kwargs.get('amb_min'))
+        amax = convert_val(kwargs.get('amb_max'))
+        
         if amin is not None and amax is not None:
             self.ambient_range = f"{fmt(amin)} - {fmt(amax)}"
         else:
@@ -629,36 +741,33 @@ class FermVaultApp(App):
             self.ambient_target_color = COL_LGRAY
             self.range_text_color = COL_LGRAY
         else:
-            # --- 2a. Actuals Logic ---
+            # --- 2a. Actuals Logic (Using Converted Values) ---
+            # Tolerance is Delta: 0.3F is roughly 0.17C. 
+            # We can use a simpler approach: Calculate delta in the current unit.
+            # If C: 0.2 deg C. If F: 0.3 deg F.
+            tolerance = 0.2 if is_c else 0.3
+            
             # Ambient Logic
-            try:
-                a_act = float(kwargs.get('amb_temp'))
-                a_max = float(amax) if amax is not None else 100.0
-                a_min = float(amin) if amin is not None else 0.0
-                
-                if a_act > a_max: self.ambient_actual_color = COL_RED
-                elif a_act < a_min: self.ambient_actual_color = COL_BLUE
+            if a_act is not None and amax is not None and amin is not None:
+                if a_act > amax: self.ambient_actual_color = COL_RED
+                elif a_act < amin: self.ambient_actual_color = COL_BLUE
                 else: self.ambient_actual_color = COL_GREEN
-            except (ValueError, TypeError):
+            else:
                 self.ambient_actual_color = COL_WHITE
 
             # Beer Logic
             if "AMBIENT" in self.control_mode_display:
                 self.beer_actual_color = COL_LGRAY
             else:
-                try:
-                    b_act = float(kwargs.get('beer_temp'))
-                    b_tgt = float(kwargs.get('beer_setpoint'))
+                if b_act is not None and b_tgt is not None:
                     delta = b_act - b_tgt
-                    
-                    if delta >= 0.3: self.beer_actual_color = COL_RED
-                    elif delta <= -0.3: self.beer_actual_color = COL_BLUE
+                    if delta >= tolerance: self.beer_actual_color = COL_RED
+                    elif delta <= -tolerance: self.beer_actual_color = COL_BLUE
                     else: self.beer_actual_color = COL_GREEN
-                except (ValueError, TypeError):
+                else:
                     self.beer_actual_color = COL_WHITE
 
             # --- 2b. Functional Display Logic (Targets/Range) ---
-            # Range is AMBER whenever Monitoring is ON (per requirements)
             self.range_text_color = COL_AMBER
             
             if "AMBIENT" in self.control_mode_display:
@@ -669,39 +778,27 @@ class FermVaultApp(App):
                 self.ambient_target_color = COL_LGRAY
                 self.beer_target_color = COL_AMBER
 
-        # --- 3. UPDATE GRAVITY WIDGETS ---
+        # --- 3. UPDATE GRAVITY WIDGETS (Unchanged) ---
         if hasattr(self, 'settings_manager'):
             og_val = self.settings_manager.get("og_display_var", "-.---")
             og_time = self.settings_manager.get("og_timestamp_var", "--:--:--")
-            
-            if og_time and isinstance(og_time, str) and " " in og_time:
-                 og_time = og_time.replace(" ", "\n")
-
+            if og_time and isinstance(og_time, str) and " " in og_time: og_time = og_time.replace(" ", "\n")
             self.og_full_text = f"OG: {og_val}\n\n{og_time}"
 
             sg_val = self.settings_manager.get("sg_display_var", "-.---")
             sg_time = self.settings_manager.get("sg_timestamp_var", "--:--:--")
-            
-            if sg_time and isinstance(sg_time, str) and " " in sg_time:
-                 sg_time = sg_time.replace(" ", "\n")
-            
+            if sg_time and isinstance(sg_time, str) and " " in sg_time: sg_time = sg_time.replace(" ", "\n")
             self.sg_full_text = f"SG: {sg_val}\n\n{sg_time}"
 
             fg_val = self.settings_manager.get("fg_value_var", "-.---")
             fg_msg = self.settings_manager.get("fg_status_var", "--")
-            
             if not fg_msg: fg_msg = "--"
             has_valid_value = (fg_val != "-.---")
-
-            if not has_valid_value and fg_msg not in ["--", ""]:
-                self.fg_full_text = f"FG: {fg_msg}"
-            else:
-                self.fg_full_text = f"FG: {fg_val}\n\n{fg_msg}"
-
-            if fg_msg == "Stable":
-                self.fg_text_color = [0.2, 0.8, 0.2, 1] 
-            else:
-                self.fg_text_color = [1, 1, 1, 1]
+            if not has_valid_value and fg_msg not in ["--", ""]: self.fg_full_text = f"FG: {fg_msg}"
+            else: self.fg_full_text = f"FG: {fg_val}\n\n{fg_msg}"
+            
+            if fg_msg == "Stable": self.fg_text_color = [0.2, 0.8, 0.2, 1] 
+            else: self.fg_text_color = [1, 1, 1, 1]
             
     # --- OTHER METHODS ---
     def set_aux_mode(self, mode_value):
@@ -723,29 +820,38 @@ class FermVaultApp(App):
 
     def stage_setting_change(self, key, new_value):
         # DIRECT KEY USAGE: The key IS the property name.
-        self.staged_changes[key] = new_value
-        self.is_settings_dirty = True
         
-        # Update the UI property directly using the key
+        # 1. Update the UI property directly using the key (for immediate visual feedback)
+        #    This stores the 'new_value' (which might be in C) in the UI property.
         if hasattr(self, key):
-            # 1. Handle Booleans explicitly FIRST
             if isinstance(new_value, bool):
                  setattr(self, key, new_value)
-                 
-            # 2. Handle Numbers (Float/Int) for formatting
             elif isinstance(new_value, (float, int)):
-                # FIX: Add "tolerance" to high-precision formatting
                 high_precision_keys = ["pid_ki", "tolerance"]
                 fmt = ".4f" if key in high_precision_keys else ".1f"
                 setattr(self, key, f"{float(new_value):{fmt}}")
-                
-            # 3. Handle Strings/Other
             else:
                 setattr(self, key, str(new_value))
 
+        # 2. Determine value to Stage for Backend (Convert C -> F if needed)
+        value_to_stage = new_value
+        
+        if self.temp_units == "C" and isinstance(new_value, (int, float)):
+            if key in self.TEMP_KEYS_ABS:
+                # C -> F Absolute: (C * 9/5) + 32
+                value_to_stage = (float(new_value) * 9.0 / 5.0) + 32.0
+            elif key in self.TEMP_KEYS_DELTA:
+                # C -> F Delta: C * 9/5
+                value_to_stage = float(new_value) * 9.0 / 5.0
+
+        # 3. Stage the change
+        self.staged_changes[key] = value_to_stage
+        self.is_settings_dirty = True
+
     def stage_text_input(self, key, text_value):
         # API key is string, allow it
-        if key == "api_key":
+        str_keys = ["api_key", "smtp_recipient", "smtp_sender", "smtp_password", "smtp_server", "smtp_port"]
+        if key in str_keys:
              self.stage_setting_change(key, text_value)
              return
              
@@ -813,15 +919,27 @@ class FermVaultApp(App):
         # Keys requiring special handling
         api_keys = ["api_key", "api_call_frequency_m", "fg_check_frequency_h", "tolerance", "window_size", "max_outliers"]
         
+        # --- NEW: Notification Keys ---
+        smtp_keys = ["smtp_recipient", "smtp_sender", "smtp_password", "smtp_server", "smtp_port"]
+        cond_keys = ["conditional_enabled", "cond_amb_min", "cond_amb_max", "cond_beer_min", "cond_beer_max"]
+        # ------------------------------
+        
         cooling_update = {}
         api_update = {}
         
+        # Dictionaries for complex updates
+        smtp_update = {}
+        cond_update = {}
+        notif_update_freq = None # Stores frequency change
+        
+        # Capture old frequency for rescheduling
+        old_freq = int(self.settings_manager.get("frequency_hours", 0))
+
         for key, val in self.staged_changes.items():
             if key in cooling_keys:
                 cooling_update[key] = float(val) * 60.0
             
             elif key == "api_call_frequency_m":
-                # Convert Minutes (UI) -> Seconds (Backend)
                 api_update["api_call_frequency_s"] = int(float(val) * 60)
             
             elif key in ["window_size", "max_outliers", "fg_check_frequency_h"]:
@@ -832,6 +950,28 @@ class FermVaultApp(App):
                  
             elif key == "api_key":
                  api_update[key] = str(val)
+
+            # --- NOTIFICATIONS HANDLING ---
+            elif key == "notif_frequency_hours":
+                new_freq = int(float(val))
+                self.settings_manager.set("frequency_hours", new_freq)
+                notif_update_freq = new_freq
+            
+            elif key in smtp_keys:
+                # Map Property Key -> Backend Key
+                if key == "smtp_recipient": smtp_update["email_recipient"] = str(val)
+                elif key == "smtp_sender": smtp_update["server_email"] = str(val)
+                elif key == "smtp_password": smtp_update["server_password"] = str(val)
+                elif key == "smtp_server": smtp_update["smtp_server"] = str(val)
+                elif key == "smtp_port": smtp_update["smtp_port"] = int(val)
+            
+            elif key in cond_keys:
+                # Map properties to backend keys
+                if key == "conditional_enabled": cond_update["conditional_enabled"] = bool(val)
+                elif key == "cond_amb_min": cond_update["conditional_amb_min"] = float(val)
+                elif key == "cond_amb_max": cond_update["conditional_amb_max"] = float(val)
+                elif key == "cond_beer_min": cond_update["conditional_beer_min"] = float(val)
+                elif key == "cond_beer_max": cond_update["conditional_beer_max"] = float(val)
 
             else:
                 self.settings_manager.set(key, val)
@@ -845,7 +985,27 @@ class FermVaultApp(App):
              current_api = self.settings_manager.get_all_api_settings()
              current_api.update(api_update)
              self.settings_manager.save_api_settings(current_api)
+        
+        # --- SAVE SMTP ---
+        if smtp_update:
+            current_smtp = self.settings_manager.get_all_smtp_settings()
+            current_smtp.update(smtp_update)
+            # We must set this directly back to the main settings dict
+            self.settings_manager.settings['smtp_settings'] = current_smtp
+            self.settings_manager._save_all_settings() # Force save
             
+        # --- SAVE CONDITIONAL ---
+        if cond_update:
+            current_notif = self.settings_manager.settings.get('notification_settings', {})
+            current_notif.update(cond_update)
+            self.settings_manager.settings['notification_settings'] = current_notif
+            self.settings_manager._save_all_settings()
+
+        # --- RESCHEDULE IF FREQ CHANGED ---
+        if notif_update_freq is not None:
+             if self.notification_manager:
+                 self.notification_manager.force_reschedule(old_freq, notif_update_freq)
+
         if hasattr(self, 'temp_controller') and self.temp_controller and hasattr(self.temp_controller, 'pid'):
             self.temp_controller.pid.Kp = float(self.settings_manager.get("pid_kp", 2.0))
             self.temp_controller.pid.Ki = float(self.settings_manager.get("pid_ki", 0.03))
@@ -951,6 +1111,25 @@ class FermVaultApp(App):
             self.stage_setting_change("tolerance", api_defs.get("tolerance", 0.0005))
             self.stage_setting_change("window_size", api_defs.get("window_size", 450))
             self.stage_setting_change("max_outliers", api_defs.get("max_outliers", 4))
+            
+        # --- NEW: ALERTS DEFAULTS ---
+        elif tab_name == 'alerts':
+            notif_defs = self.settings_manager.get_defaults_for_category("notification_settings")
+            smtp_defs = self.settings_manager.get_defaults_for_category("smtp_settings")
+            
+            self.stage_setting_change("notif_frequency_hours", notif_defs.get("frequency_hours", 0.0))
+            self.stage_setting_change("smtp_recipient", smtp_defs.get("email_recipient", ""))
+            self.stage_setting_change("smtp_sender", smtp_defs.get("server_email", ""))
+            self.stage_setting_change("smtp_password", smtp_defs.get("server_password", ""))
+            self.stage_setting_change("smtp_server", smtp_defs.get("smtp_server", ""))
+            self.stage_setting_change("smtp_port", smtp_defs.get("smtp_port", 587))
+            
+            self.stage_setting_change("conditional_enabled", notif_defs.get("conditional_enabled", False))
+            self.stage_setting_change("cond_amb_min", notif_defs.get("conditional_amb_min", 32.0))
+            self.stage_setting_change("cond_amb_max", notif_defs.get("conditional_amb_max", 85.0))
+            self.stage_setting_change("cond_beer_min", notif_defs.get("conditional_beer_min", 32.0))
+            self.stage_setting_change("cond_beer_max", notif_defs.get("conditional_beer_max", 75.0))
+        # ----------------------------
 
         elif tab_name == 'pid':
             # SSOT: system_settings (PID params are stored here)
@@ -1119,8 +1298,6 @@ class FermVaultApp(App):
             except Exception as e:
                 err_msg = str(e)
                 Clock.schedule_once(lambda dt: self._append_update_log(f"\n[CRITICAL ERROR] {err_msg}"), 0)
-
-        threading.Thread(target=_install, daemon=True).start()
 
     def _append_update_log(self, text):
         self.update_log_text += text

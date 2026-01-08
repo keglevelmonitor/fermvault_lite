@@ -40,15 +40,10 @@ class FGCalculator:
         api_key = api_settings.get("api_key")
         
         # NOTE: Brew Session ID needs to be fetched from the UI's selected Brew Session
-        # Assuming there is a mechanism to get the ID corresponding to the UI's selection.
-        # For now, we rely on the caller to potentially provide it if needed, or we fetch a placeholder.
         brew_session_id = self.settings_manager.get("current_brew_session_id") 
-        
-        # --- MODIFICATION: Removed API check, it's handled by NotificationManager ---
-        if active_service == "OFF":
-             return None, None, None, None, None, None
-        # --- END MODIFICATION ---
 
+        # REFACTORED: Removed redundant "OFF" check. 
+        # The caller (calculate_fg) handles the logic flow based on the returned status.
         return (
             active_service,
             api_key,

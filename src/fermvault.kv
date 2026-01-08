@@ -42,6 +42,12 @@
 <ScaledButton@Button>:
     font_size: Window.height * 0.04
     bold: True
+    background_normal: ''              # <--- Removes the default grey image texture
+    background_color: 0.4, 0.4, 0.4, 1 # <--- Sets a default flat dark grey
+
+# <ScaledButton@Button>:
+    # font_size: Window.height * 0.04
+    # bold: True
 
 <ScaledSpinner@Spinner>:
     font_size: Window.height * 0.04
@@ -127,18 +133,21 @@
     label_text: "Setting"
     value_text: "0.0"
     key: ""
+    # UPDATED: Add password mode support
+    password_mode: False
    
     Text_Medium:
         text: root.label_text
         text_size: self.size
         halign: 'right'
         valign: 'middle'
-        size_hint_x: 0.6
+        size_hint_x: 0.45
         color: 0.8, 0.8, 0.8, 1
 
     ScaledSmallTextInput:
         text: root.value_text
-        size_hint_x: 0.4
+        size_hint_x: 0.55
+        password: root.password_mode
         on_text: app.stage_text_input(root.key, self.text)
 
 <StepperRow@BoxLayout>:
@@ -225,7 +234,7 @@
         
     ScaledButton:
         text: "HELP"
-    
+     
     Label:
         text: "" # Spacer
     
@@ -355,7 +364,7 @@
 
         # --- WARNING CONTENT AREA ---
         Text_Medium:
-            text: "WARNING! Changes to the PID TUNING parameters, even very small changes, may produce very large and possibly unexpected behavior in the temperature control management of the system. You must be absolutely certain you wish to make these changes."
+            text: "WARNING! Changes to the PID TUNING parameters, even very small changes, may produce very large and possibly unexpected behavior in the temperature control management of the system.\nYou must be absolutely certain you wish to make these changes."
             text_size: self.size
             halign: 'center'
             valign: 'middle'
@@ -865,17 +874,7 @@
                         spacing: 5
                         size_hint_y: 1
 
-                        # SENSORS
-                        SettingRow:
-                            # Inherits dynamic height (0.085)
-                            SettingLabel:
-                                text: "Beer Sensor"
-                            ScaledSmallSpinner:
-                                text: app.ds18b20_beer_sensor
-                                values: app.available_sensors
-                                size_hint_x: 0.6
-                                on_text: app.save_sensor_setting("beer", self.text)
-
+                        # SENSORS (Existing)
                         SettingRow:
                             SettingLabel:
                                 text: "Ambient Sensor"
@@ -884,6 +883,28 @@
                                 values: app.available_sensors
                                 size_hint_x: 0.6
                                 on_text: app.save_sensor_setting("ambient", self.text)
+
+                        # --- NEW: TEMPERATURE UNITS ---
+                        SettingRow:
+                            SettingLabel:
+                                text: "Temperature Units"
+                            BoxLayout:
+                                size_hint_x: 0.6
+                                spacing: 10
+                                ToggleButton:
+                                    text: "Fahrenheit"
+                                    font_size: Window.height * 0.03
+                                    bold: True
+                                    group: "units"
+                                    state: 'down' if app.temp_units == 'F' else 'normal'
+                                    on_release: app.set_temp_units("F")
+                                ToggleButton:
+                                    text: "Celsius"
+                                    font_size: Window.height * 0.03
+                                    bold: True
+                                    group: "units"
+                                    state: 'down' if app.temp_units == 'C' else 'normal'
+                                    on_release: app.set_temp_units("C")
 
                         # RELAY LOGIC
                         SettingRow:
@@ -947,14 +968,173 @@
                     orientation: 'vertical'
                     padding: [0, 5, 0, 0]
                     
-                    Text_Small:
-                        text: "Notification & Email Settings\n(Coming Soon)"
-                        halign: 'center'
-                        size_hint_y: 1
-                    
+                    ScrollView:
+                        do_scroll_x: False
+                        
+                        GridLayout:
+                            cols: 1
+                            spacing: 10
+                            padding: [10, 10]
+                            size_hint_y: None
+                            height: self.minimum_height
+                            
+                            # --- 1. PUSH FREQUENCY ---
+                            StepperRow:
+                                label_text: "Push Alert Frequency (Hrs)"
+                                key: "notif_frequency_hours"
+                                value_text: app.notif_frequency_hours
+                                min_val: 0.0
+                                max_val: 24.0
+                                step_val: 1.0
+
+                            # --- 2. EMAIL SETTINGS ---
+                            SettingInputRow:
+                                label_text: "Recipient Email"
+                                value_text: app.smtp_recipient
+                                key: "smtp_recipient"
+
+                            SettingInputRow:
+                                label_text: "Sender Email"
+                                value_text: app.smtp_sender
+                                key: "smtp_sender"
+
+                            SettingInputRow:
+                                label_text: "Sender Password"
+                                value_text: app.smtp_password
+                                key: "smtp_password"
+                                password_mode: True
+
+                            SettingInputRow:
+                                label_text: "SMTP Server"
+                                value_text: app.smtp_server
+                                key: "smtp_server"
+
+                            SettingInputRow:
+                                label_text: "SMTP Port"
+                                value_text: app.smtp_port
+                                key: "smtp_port"
+                                
+                            # --- 3. CONDITIONAL ALERTS ---
+                            BoxLayout:
+                                orientation: 'horizontal'
+                                size_hint_y: None
+                                height: 40
+                                spacing: 10
+                                padding: [10, 5]
+                                canvas.before:
+                                    Color:
+                                        rgba: 0.2, 0.2, 0.2, 1
+                                    Rectangle:
+                                        pos: self.pos
+                                        size: self.size
+
+                                CheckBox:
+                                    active: app.conditional_enabled
+                                    size_hint_x: None
+                                    width: 40
+                                    on_active: app.stage_setting_change("conditional_enabled", self.active)
+                                    
+                                Text_Medium:
+                                    text: "Enable Conditional Alerts (Temperature Range)"
+                                    valign: 'middle'
+                                    text_size: self.size
+
+                            # Ambient Range (Min/Max)
+                            StepperRow:
+                                label_text: "Ambient MIN (F)"
+                                key: "cond_amb_min"
+                                value_text: app.cond_amb_min
+                                min_val: 32.0
+                                max_val: 100.0
+                                step_val: 1.0
+                                
+                            StepperRow:
+                                label_text: "Ambient MAX (F)"
+                                key: "cond_amb_max"
+                                value_text: app.cond_amb_max
+                                min_val: 32.0
+                                max_val: 100.0
+                                step_val: 1.0
+
+                            # Beer Range (Min/Max)
+                            StepperRow:
+                                label_text: "Beer MIN (F)"
+                                key: "cond_beer_min"
+                                value_text: app.cond_beer_min
+                                min_val: 32.0
+                                max_val: 100.0
+                                step_val: 1.0
+
+                            StepperRow:
+                                label_text: "Beer MAX (F)"
+                                key: "cond_beer_max"
+                                value_text: app.cond_beer_max
+                                min_val: 32.0
+                                max_val: 100.0
+                                step_val: 1.0
+
                     StandardSettingsFooter:
                         tab_name: 'alerts'
 
+            # --- TAB 4: API & FG ---
+            TabbedPanelItem:
+                text: 'API & FG'
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: [0, 5, 0, 0]
+                    
+                    GridLayout:
+                        cols: 1
+                        padding: 10
+                        spacing: 5
+                        size_hint_y: 1
+                        
+                        # --- SECTION 1: API CONNECTION ---
+                        Text_Medium:
+                            text: "API CONNECTION"
+                            size_hint_y: None
+                            height: 30
+                            color: app.col_theme_blue
+
+                        SettingInputRow:
+                            label_text: "User API Key"
+                            value_text: app.api_key
+                            key: "api_key"
+                            password_mode: True
+
+                        Label:
+                            size_hint_y: None
+                            height: 10
+
+                        # --- SECTION 2: FG CALCULATION ---
+                        Text_Medium:
+                            text: "FG CALCULATION PARAMETERS"
+                            size_hint_y: None
+                            height: 30
+                            color: app.col_theme_blue
+
+                        SettingInputRow:
+                            label_text: "Stability Tolerance (SG)"
+                            value_text: app.tolerance
+                            key: "tolerance"
+
+                        SettingInputRow:
+                            label_text: "Analysis Window (Readings)"
+                            value_text: app.window_size
+                            key: "window_size"
+
+                        SettingInputRow:
+                            label_text: "Max Outliers Allowed"
+                            value_text: app.max_outliers
+                            key: "max_outliers"
+
+                        Label:
+                            size_hint_y: 1
+
+                    StandardSettingsFooter:
+                        tab_name: 'api'
+            
             # --- TAB 5: PID ---
             TabbedPanelItem:
                 text: 'PID TUNING'
