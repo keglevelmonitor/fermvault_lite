@@ -1,4 +1,5 @@
-#
+# 
+# fermvault_lite app
 # FULL FILE CONTENT: main_kivy.py 
 # ---------------------------------------------------------
 import os
