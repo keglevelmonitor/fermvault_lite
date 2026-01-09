@@ -959,7 +959,16 @@
                         spacing: 5
                         size_hint_y: 1
 
-                        # SENSORS (Existing)
+                        # 1. SENSORS (Beer & Ambient)
+                        SettingRow:
+                            SettingLabel:
+                                text: "Beer Sensor"
+                            ScaledSmallSpinner:
+                                text: app.ds18b20_beer_sensor
+                                values: app.available_sensors
+                                size_hint_x: 0.6
+                                on_text: app.save_sensor_setting("beer", self.text)
+
                         SettingRow:
                             SettingLabel:
                                 text: "Ambient Sensor"
@@ -969,7 +978,7 @@
                                 size_hint_x: 0.6
                                 on_text: app.save_sensor_setting("ambient", self.text)
 
-                        # --- NEW: TEMPERATURE UNITS ---
+                        # 2. TEMPERATURE UNITS (Restored)
                         SettingRow:
                             SettingLabel:
                                 text: "Temperature Units"
@@ -991,7 +1000,7 @@
                                     state: 'down' if app.temp_units == 'C' else 'normal'
                                     on_release: app.set_temp_units("C")
 
-                        # RELAY LOGIC
+                        # 3. RELAY LOGIC
                         SettingRow:
                             SettingLabel:
                                 text: "Relay Activation"
@@ -1000,7 +1009,6 @@
                                 spacing: 10
                                 ToggleButton:
                                     text: "Active HIGH"
-                                    # SMALL (3%)
                                     font_size: Window.height * 0.03
                                     bold: True
                                     group: "logic"
