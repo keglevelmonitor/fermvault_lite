@@ -1301,6 +1301,8 @@ class FermVaultApp(App):
                 err_msg = str(e)
                 Clock.schedule_once(lambda dt: self._append_update_log(f"\n[CRITICAL ERROR] {err_msg}"), 0)
 
+        threading.Thread(target=_install, daemon=True).start()
+
     def _append_update_log(self, text):
         self.update_log_text += text
 
