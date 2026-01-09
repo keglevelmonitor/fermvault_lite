@@ -124,7 +124,7 @@ class SettingsManager:
             "fg_status_var": "", 
             "fg_value_var": "-.---",
             
-            "aux_relay_mode": "Monitoring",
+            "aux_relay_mode": "MONITORING",
             "fan_state": "Fan OFF", 
         }
             
