@@ -327,7 +327,8 @@ class FermVaultApp(App):
     @mainthread
     def log_system_message(self, message):
         # 1. UI Update
-        timestamp = datetime.now().strftime("[%H:%M:%S]")
+        # MODIFIED: Added date to timestamp [%Y-%m-%d %H:%M:%S]
+        timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
         self.log_text += f"{timestamp} {message}\n"
         if len(self.log_text) > 5000: self.log_text = self.log_text[-4000:]
         
@@ -338,7 +339,7 @@ class FermVaultApp(App):
                 data_dir = self.settings_manager.data_dir
                 log_path = os.path.join(data_dir, "system_log.csv")
                 
-                # Full Date+Time for CSV
+                # Full Date+Time for CSV (Verified: Already includes Date)
                 csv_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
                 file_exists = os.path.isfile(log_path)
@@ -1113,22 +1114,23 @@ class FermVaultApp(App):
             self.stage_setting_change("max_outliers", api_defs.get("max_outliers", 4))
             
         # --- NEW: ALERTS DEFAULTS ---
+        # --- NEW: ALERTS DEFAULTS ---
         elif tab_name == 'alerts':
             notif_defs = self.settings_manager.get_defaults_for_category("notification_settings")
-            smtp_defs = self.settings_manager.get_defaults_for_category("smtp_settings")
             
+            # NOTE: We specifically DO NOT reset SMTP/Email settings here 
+            # to preserve user data (Server, Port, User, Pass, Recipient).
+            
+            # 1. Reset Push Frequency
             self.stage_setting_change("notif_frequency_hours", notif_defs.get("frequency_hours", 0.0))
-            self.stage_setting_change("smtp_recipient", smtp_defs.get("email_recipient", ""))
-            self.stage_setting_change("smtp_sender", smtp_defs.get("server_email", ""))
-            self.stage_setting_change("smtp_password", smtp_defs.get("server_password", ""))
-            self.stage_setting_change("smtp_server", smtp_defs.get("smtp_server", ""))
-            self.stage_setting_change("smtp_port", smtp_defs.get("smtp_port", 587))
             
+            # 2. Reset Conditional Logic & Thresholds
             self.stage_setting_change("conditional_enabled", notif_defs.get("conditional_enabled", False))
             self.stage_setting_change("cond_amb_min", notif_defs.get("conditional_amb_min", 32.0))
             self.stage_setting_change("cond_amb_max", notif_defs.get("conditional_amb_max", 85.0))
             self.stage_setting_change("cond_beer_min", notif_defs.get("conditional_beer_min", 32.0))
             self.stage_setting_change("cond_beer_max", notif_defs.get("conditional_beer_max", 75.0))
+        # ----------------------------
         # ----------------------------
 
         elif tab_name == 'pid':
@@ -1316,7 +1318,24 @@ class FermVaultApp(App):
         
         if service_name == "OFF":
             self.brew_session_list = []
-            self.current_brew_session = "Select Recipe..."
+            # MODIFIED: Blank text as requested
+            self.current_brew_session = ""
+            
+            # MODIFIED: Reset all Gravity Data to dashes (Backend + UI)
+            if hasattr(self, 'settings_manager'):
+                self.settings_manager.set("og_display_var", "-.---")
+                self.settings_manager.set("og_timestamp_var", "--:--:--")
+                self.settings_manager.set("sg_display_var", "-.---")
+                self.settings_manager.set("sg_timestamp_var", "--:--:--")
+                self.settings_manager.set("fg_value_var", "-.---")
+                self.settings_manager.set("fg_status_var", "")
+
+            # Update UI Properties immediately
+            self.og_full_text = "OG: -.---\n\n--:--:--"
+            self.sg_full_text = "SG: -.---\n\n--:--:--"
+            self.fg_full_text = "FG: -.---\n\n--"
+            self.fg_text_color = [1, 1, 1, 1]
+
         else:
             self.brew_session_list = ["Loading..."]
             self.current_brew_session = "Loading..."

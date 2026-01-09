@@ -35,6 +35,10 @@ class RelayControl:
         
         self.current_restriction_key = "dwell"
         
+        # --- NEW: Initialize Cache for UI (Prevents AttributeError) ---
+        self.relay_state_cache = {"Heat": False, "Cool": False, "Fan": False}
+        # --------------------------------------------------------------
+        
         # --- NEW: Initialize Logic Config ---
         self.logic_configured = self.settings.get("relay_logic_configured", False)
         # Load the correct High/Low values (this sets self.RELAY_ON and self.RELAY_OFF)
@@ -230,6 +234,12 @@ class RelayControl:
             self.gpio.output(self.pins["Cool"], self.RELAY_ON if final_cool_state else self.RELAY_OFF)
             self.gpio.output(self.pins["Fan"], self.RELAY_ON if aux_state else self.RELAY_OFF)
         # ---------------------------------------------------------
+        
+        # --- NEW: Update Cache for UI (No hardware impact) ---
+        self.relay_state_cache["Heat"] = final_heat_state
+        self.relay_state_cache["Cool"] = final_cool_state
+        self.relay_state_cache["Fan"] = aux_state
+        # -----------------------------------------------------
 
         # --- 4. Update SettingsManager ---
         self.settings.set("heat_state", "HEATING" if final_heat_state else "Heating OFF")
@@ -240,6 +250,7 @@ class RelayControl:
         self.settings.set("fan_state", "Aux ON" if aux_state else "Aux OFF")
         
         return final_heat_state, final_cool_state
+        
     # --- FAN CONTROL ---
     # FIXED
     def turn_on_fan(self):
@@ -256,7 +267,7 @@ class RelayControl:
         if self.logic_configured:
             self.gpio.output(self.pins["Fan"], self.RELAY_OFF)
         self.settings.set("fan_state", "Fan OFF")
-
+        
     # FIXED
     def turn_off_all_relays(self, skip_aux=False): # Renamed parameter for clarity
         # --- SAFETY GUARD ---
@@ -266,6 +277,13 @@ class RelayControl:
             
             if not skip_aux: 
                 self.gpio.output(self.pins["Fan"], self.RELAY_OFF)
+
+        # --- NEW: Update Cache for UI (No hardware impact) ---
+        self.relay_state_cache["Heat"] = False
+        self.relay_state_cache["Cool"] = False
+        if not skip_aux:
+            self.relay_state_cache["Fan"] = False
+        # -----------------------------------------------------
 
         if not skip_aux: 
             self.settings.set("fan_state", "Aux OFF")

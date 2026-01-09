@@ -596,12 +596,22 @@ class TemperatureController:
         )
         
         if self.notification_manager and self.notification_manager.ui:
+            # FIX: Read the LIVE hardware state directly from the Relay Controller's cache
+            # This prevents "stale" settings text from causing a flash.
+            real_heat = self.relay_control.relay_state_cache.get("Heat", False)
+            real_cool = self.relay_control.relay_state_cache.get("Cool", False)
+
             self.notification_manager.ui.push_data_update( 
                 beer_temp=beer_temp if current_beer_ok else "--.-",
                 amb_temp=amb_temp if current_amb_ok else "--.-",
                 amb_min=amb_min if amb_min is not None else 0.0, 
                 amb_max=amb_max if amb_max is not None else 0.0,
                 beer_setpoint=beer_setpoint_current,
+                
+                # DIRECT SIGNAL MAPPING
+                heat_state="HEATING" if real_heat else "Heating OFF",
+                cool_state="COOLING" if real_cool else "Cooling OFF",
+                
                 amb_target=ambient_target_setpoint,
                 current_mode=current_mode,
                 ramp_end_target=ramp_end_target,
@@ -829,8 +839,12 @@ class TemperatureController:
                     amb_min=amb_min if amb_min is not None else 0.0, 
                     amb_max=amb_max if amb_max is not None else 0.0,
                     beer_setpoint=beer_setpoint_current,
-                    heat_state=self.settings_manager.get("heat_state"),
-                    cool_state=self.settings_manager.get("cool_state"),
+                    
+                    # DIRECT SIGNAL: Use the exact variables (final_heat/final_cool) 
+                    # that were calculated in this loop to drive the hardware.
+                    heat_state="HEATING" if final_heat else "Heating OFF",
+                    cool_state="COOLING" if final_cool else "Cooling OFF",
+                    
                     amb_target=ambient_target_setpoint,
                     current_mode=current_mode,
                     ramp_end_target=ramp_end_target,
