@@ -1309,10 +1309,37 @@ class FermVaultApp(App):
 
     def restart_application(self):
         self.log_system_message("RESTARTING APPLICATION...")
-        self.stop() # Triggers on_stop failsafe
-        # Wait briefly for cleanup then restart
-        time.sleep(1)
-        os.execl(sys.executable, sys.executable, *sys.argv)
+        
+        # --- PORTED FROM KETTLEBRAIN: MANUAL CLEANUP ---
+        # We do NOT call self.stop() here because that triggers on_stop -> os._exit(0)
+        # which kills the process immediately, preventing the restart.
+        
+        try:
+            if hasattr(self, 'temp_controller') and self.temp_controller:
+                self.temp_controller.stop_monitoring()
+                
+            if hasattr(self, 'relay_control') and self.relay_control:
+                self.relay_control.cleanup_gpio()
+        except Exception as e:
+            print(f"[System] Restart cleanup warning: {e}")
+
+        # --- PORTED FROM KETTLEBRAIN: ABSOLUTE PATH RESTART ---
+        import sys
+        import os
+        
+        # 1. Resolve Absolute Paths to ensure reliability
+        python = sys.executable
+        script = os.path.abspath(sys.argv[0])
+        args = sys.argv[1:]
+        
+        # 2. Construct the Command
+        cmd_args = [python, script] + args
+        
+        print(f"[System] Executing Restart: {python} {script} {args}")
+        
+        # 3. Replace Process (Nuclear Option)
+        # This replaces the current process memory with the new one.
+        os.execv(python, cmd_args)
 
     def select_api_service(self, service_name):
         """Called when API Service Spinner is changed."""
